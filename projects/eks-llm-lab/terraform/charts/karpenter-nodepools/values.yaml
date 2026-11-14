@@ -1,0 +1,11 @@
+clusterName: eks-llm-lab
+nodeRoleName: eks-llm-lab-karpenter-node
+cpu:
+  cpuLimit: 16
+  categories: ["c", "m"]
+  sizes: ["large", "xlarge"]
+  capacityTypes: ["spot", "on-demand"] # Karpenter picks spot first; on-demand is the fallback
+gpu:
+  enabled: false
+  families: ["g4dn", "g5", "g6"]
+  cpuLimit: 8

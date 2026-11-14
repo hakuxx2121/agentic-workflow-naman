@@ -1,0 +1,71 @@
+# Optional GPU variant: vLLM serving the full-precision (fp16) Qwen2.5-0.5B-Instruct.
+# Only deployed when enable_gpu_nodepool = true.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-gpu
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: llm-gpu
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: llm-gpu
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: llm-gpu
+    spec:
+      nodeSelector:
+        workload-type: gpu
+      tolerations:
+        - key: nvidia.com/gpu
+          operator: Exists
+          effect: NoSchedule
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.32.0
+          args:
+            - --model
+            - Qwen/Qwen2.5-0.5B-Instruct
+            - --served-model-name
+            - qwen2.5-0.5b-instruct
+            - --dtype
+            - half # T4 (g4dn) has no bf16
+            - --max-model-len
+            - "4096"
+            - --gpu-memory-utilization
+            - "0.85"
+            - --port
+            - "8000"
+          ports:
+            - { name: vllm-http, containerPort: 8000 } # serves both the API and /metrics
+          readinessProbe:
+            httpGet: { path: /health, port: 8000 }
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 60
+          resources:
+            requests: { cpu: "2", memory: 8Gi, nvidia.com/gpu: 1 }
+            limits: { memory: 14Gi, nvidia.com/gpu: 1 }
+          volumeMounts:
+            - { name: shm, mountPath: /dev/shm }
+            - { name: hf-cache, mountPath: /root/.cache/huggingface }
+      volumes:
+        - name: shm
+          emptyDir: { medium: Memory, sizeLimit: 2Gi }
+        - name: hf-cache
+          emptyDir: { sizeLimit: 10Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: llm-gpu
+  namespace: llm
+spec:
+  type: ClusterIP
+  selector:
+    app.kubernetes.io/name: llm-gpu
+  ports:
+    - { name: http, port: 80, targetPort: vllm-http }

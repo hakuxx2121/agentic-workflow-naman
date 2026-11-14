@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""Tiny offline stand-in for `aws s3 sync` (tests only). s3://bucket/key maps to $FAKE_S3_ROOT/bucket/key.
+Compares size + mtime like the real CLI, prints upload:/download:/delete: lines, honours --delete, --exclude, --dryrun."""
+import fnmatch, os, shutil, sys
+from pathlib import Path
+
+root = Path(os.environ["FAKE_S3_ROOT"])
+args = sys.argv[1:]
+if args[:2] != ["s3", "sync"]:
+    sys.exit(f"fake-aws: unsupported {args}")
+with open(root / "calls.log", "a") as log:
+    log.write(f"AWS_PROFILE={os.environ.get('AWS_PROFILE','')} {' '.join(args)}\n")
+pos, excludes, flags, i = [], [], set(), 2
+while i < len(args):
+    a = args[i]
+    if a in ("--exclude", "--content-type", "--cache-control"):
+        if a == "--exclude":
+            excludes.append(args[i + 1])
+        i += 2; continue
+    if a.startswith("--"):
+        flags.add(a); i += 1; continue
+    pos.append(a); i += 1
+src, dst = pos
+to_path = lambda p: root / p[5:] if p.startswith("s3://") else Path(p)
+s, d = to_path(src), to_path(dst)
+d.mkdir(parents=True, exist_ok=True)
+verb = "download" if src.startswith("s3://") else "upload"
+excluded = lambda rel: any(fnmatch.fnmatch(rel, e) for e in excludes)
+def files(base):
+    return {str(p.relative_to(base)): p for p in base.rglob("*") if p.is_file()} if base.exists() else {}
+sf, df = files(s), files(d)
+for rel, p in sorted(sf.items()):
+    if excluded(rel): continue
+    q = d / rel
+    st = p.stat()
+    if rel in df and df[rel].stat().st_size == st.st_size and int(df[rel].stat().st_mtime) == int(st.st_mtime):
+        continue
+    print(f"{verb}: {src.rstrip('/')}/{rel} to {dst.rstrip('/')}/{rel}")
+    if "--dryrun" not in flags:
+        q.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(p, q)
+if "--delete" in flags:
+    for rel, q in sorted(df.items()):
+        if rel not in sf and not excluded(rel):
+            print(f"delete: {dst.rstrip('/')}/{rel}")
+            if "--dryrun" not in flags:
+                q.unlink()

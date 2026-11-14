@@ -1,0 +1,1 @@
+pytest\n# optional, for poster/render_update_img.py:\n# matplotlib

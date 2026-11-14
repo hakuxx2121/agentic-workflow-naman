@@ -1,0 +1,92 @@
+# Grok Bot company org chart — edit this file, then run:
+#   python3 render.py
+# from this folder. That regenerates org-chart.html, org-chart.png,
+# and the Mermaid block in README.md.
+#
+# To add a bot: append a member under the right team.
+# To move a bot: change reports_to / team, or set dual_role.
+# ids must be unique. Tech Bot is listed once, with dual_role links.
+
+title: Grok Bot company
+kicker: Org chart
+subtitle: Naman is CEO. CEO Bot routes and reviews. Manager Bot runs the Creator Dashboard team.
+
+ceo:
+  id: naman
+  name: Naman
+  role: CEO
+  kind: human
+  blurb: Directs the fleet and approves anything that posts or sends.
+
+router:
+  id: ceo_bot
+  name: CEO Bot
+  role: Primary router and reviewer
+  reports_to: naman
+  blurb: Routes work to the right specialist, reviews output, and reports to Naman.
+
+teams:
+  - id: creator_dashboard
+    name: Creator Dashboard team
+    color: dashboard
+    lead:
+      id: manager_bot
+      name: Manager Bot
+      role: Team lead
+      reports_to: ceo_bot
+      blurb: Coordinates specs, build, QA, infra, and publishing for the Creator Dashboard.
+    members:
+      - id: business_logic_writer
+        name: Business Logic Writer
+        role: Specs
+      - id: graph_bot
+        name: Graph Bot
+        role: Builds
+      - id: dashboard_qa
+        name: Dashboard QA
+        role: Tests
+      - id: github_bot
+        name: GitHub Bot
+        role: Publishing
+      - id: tech_bot
+        name: Tech Bot
+        role: Infra
+        # Shown once. Also a specialist under CEO Bot.
+        dual_role: true
+        dual_label: Also a specialist under CEO Bot
+
+specialists:
+  name: Specialists
+  reports_to: ceo_bot
+  blurb: Report to CEO Bot. Tech Bot is also on the Creator Dashboard team.
+  members:
+    - id: job_bot
+      name: Job Bot
+    - id: car_bot
+      name: Car Bot
+    - id: vlog_editor_helper
+      name: Vlog Editor Helper
+    - id: recipe_bot
+      name: Recipe Bot
+    - id: tradingview_bot
+      name: TradingViewBot
+    - id: tv_bot
+      name: TV Bot
+    - id: ticker_tracker
+      name: Ticker Tracker
+    - id: three_tier
+      name: 3-Tier Stock Check
+    - id: earnings_call_bot
+      name: Earnings Call Bot
+    - id: ndtl_gains
+      name: NDTL - Gains
+    - id: medical_advice
+      name: Medical Advice
+    - id: workout_bot
+      name: Workout Bot
+    # Tech Bot is not repeated here; it is linked via dual_role on the dashboard team.
+
+footer:
+  - Approval before anything posts or sends
+  - No trades placed by bots
+  - Chart reads, not financial advice

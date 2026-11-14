@@ -1,0 +1,24 @@
+{{- if .Values.mtlsLab.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mtls-echo
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: mtls-echo
+  source:
+    repoURL: {{ .Values.repoURL | quote }}
+    targetRevision: {{ .Values.targetRevision | quote }}
+    path: gitops/workloads/mtls-echo
+    helm:
+      valuesObject:
+        {{- toYaml .Values.mtlsLab.echo | nindent 8 }}
+  {{- include "app.sync" . | nindent 2 }}
+{{- end }}

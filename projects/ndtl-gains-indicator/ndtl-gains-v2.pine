@@ -1,0 +1,1487 @@
+//@version=6
+indicator("NDTL - Gains v2", shorttitle="NDTL v2", overlay=true,
+     max_labels_count=500,
+     max_lines_count=500,
+     max_boxes_count=50,
+     max_bars_back=2000)
+
+// =============================================================================
+// THE STRAT MEGA SCRIPT — VERSION 2
+//   v2 adds: confluence zones, proximity highlight, broken/held levels,
+//   far-level hiding, nearest-only labels, support/resistance colors,
+//   OR retest markers, MTFC bar + candle outlines, setups in waiting,
+//   signal grades, MA trend ribbon and name tags.
+//   1. STRAT (Rob Smith) - candle pattern signals + entries
+//   2. NDTL GAINS - daily 20/50/200 + weekly 50/200 SMAs
+//   3. NDTL GAINS - intraday levels (auto-hidden on >= 3h timeframes)
+//      All PP levels are bounded: drawn from premarket-open to right edge,
+//      reset each new day so prior sessions are not cluttered.
+// =============================================================================
+
+
+// =============================================================================
+// SETTINGS
+// Ordered from most-used to least-used. Variable names are unchanged so the
+// rest of the script reads them exactly as before.
+// =============================================================================
+
+// ---- 1 · General ------------------------------------------------------------
+grpGen = "1 · General"
+maOnlyMode      = input.bool(false, "Moving averages only", group=grpGen,
+     tooltip="Hides everything except the moving averages. Handy for a quick clean chart.")
+showPP          = input.bool(true, "Show key levels", group=grpGen)
+showLineLabels  = input.bool(true, "Show level labels", group=grpGen, inline="lbl")
+labelTextSize   = input.string("Normal", "", options=["Tiny", "Small", "Normal", "Large", "Huge"], group=grpGen, inline="lbl")
+labelDetail     = input.string("Compact", "Label detail", options=["Compact", "Full"], group=grpGen,
+     tooltip="Compact: short codes for every level (PDH, ORL, AWR L 88%). Hover any label for the full name and price. Full: spell everything out.")
+maxTimeframeMin = input.int(180, "Hide levels on charts ≥ (minutes)", minval=1, group=grpGen,
+     tooltip="Intraday levels are hidden on higher timeframes. 180 = hidden on 3h and above.")
+rthSess         = input.session("0930-1600", "Regular hours", group=grpGen)
+pmSess          = input.session("0400-0930", "Premarket hours", group=grpGen)
+
+// ---- 2 · Moving Averages ----------------------------------------------------
+grpMA = "2 · Moving averages"
+showMAs    = input.bool(true, "Show 20D / 50D / 200D / 50W / 200W", group=grpMA)
+showRibbon = input.bool(true, "20D / 50D trend ribbon", group=grpMA, inline="ma2")
+showMATags = input.bool(true, "Name tags", group=grpMA, inline="ma2")
+smoothLen  = input.int(1, "Smoothing", minval=1, group=grpMA,
+     tooltip="1 = no smoothing. Higher values soften the stair-steps on intraday charts.")
+
+// ---- 3 · Key Levels ---------------------------------------------------------
+grpHL = "3 · Key levels"
+showDailyHL     = input.bool(true, "Prev day H/L",       group=grpHL, inline="hl1")
+showWeeklyHL    = input.bool(true, "Prev week H/L",      group=grpHL, inline="hl1")
+showMonthlyHL   = input.bool(true, "Prev month H/L",     group=grpHL, inline="hl2")
+showQuarterlyHL = input.bool(true, "Prev quarter H/L",   group=grpHL, inline="hl2")
+showPM          = input.bool(true, "Premarket H/L",      group=grpHL)
+
+// ---- 4 · Opening Range ------------------------------------------------------
+grpOR = "4 · Opening range"
+showOR        = input.bool(true, "Show opening range", group=grpOR)
+orMethod      = input.string("Opening impulse", "Method", options=["Opening impulse", "Time window", "Confirmed swing"], group=grpOR,
+     tooltip="Opening impulse (Paper Prophet test): each side follows the opening move until price snaps back from that extreme by the reversal %, then locks there. Time window: high/low of the first N minutes. Confirmed swing: a side locks after N candles in a row against it. All are identical on every chart timeframe.")
+useTimeBasedOR = orMethod == "Time window"
+useImpulseOR   = orMethod == "Opening impulse"
+orMinutes     = input.int(10, "Time window (minutes)", minval=1, maxval=240, group=grpOR)
+orImpulseBy   = input.string("% of range", "Impulse: snap-back", options=["% of range", "% of price"], group=grpOR, inline="imp")
+orImpulseRng  = input.float(30.0, "", minval=1, maxval=100, step=5, group=grpOR, inline="imp")
+orImpulsePct  = input.float(0.5, "price %", minval=0.01, step=0.05, group=grpOR, inline="imp",
+     tooltip="A side locks once price snaps back from its running high or low by this much. % of range: a share of the opening range so far (30 = price pulls back 30% of the range), scales to any ticker. % of price: a fixed percent of price. Lower locks sooner and tighter; higher lets the impulse run further.")
+orSkipOpen    = input.bool(true, "Impulse: ignore the opening print", group=grpOR,
+     tooltip="Ignores the wicks of the very first data candle at 9:30 (the opening auction spike). Jason's range skips those spikes on MSFT, AMZN and AAPL. Works best with the 15-second data timeframe, where only the first 15 seconds are skipped.")
+orConfirmBars = input.int(3, "Swing: candles to confirm", minval=1, maxval=20, group=grpOR, inline="sw1")
+orConfirmTf   = input.timeframe("1", "on", group=grpOR, inline="sw1",
+     tooltip="Data used by Opening impulse and Confirmed swing. Try 15 seconds (needs a plan with seconds data) to follow the opening wicks exactly.")
+orMinMinutes  = input.int(3, "Swing / impulse: min / max minutes", minval=0, maxval=60, group=grpOR, inline="sw2")
+orMaxMinutes  = input.int(60, "", minval=5, maxval=120, group=grpOR, inline="sw2",
+     tooltip="Neither side locks before the minimum; a side that hasn't confirmed by the maximum locks where it is.")
+showORRetest   = input.bool(true, "OR retest alerts", group=grpOR, inline="ort")
+orRetestTolAdr = input.float(0.05, "within × ADR", minval=0.0, step=0.01, group=grpOR, inline="ort",
+     tooltip="Alert (no chart marker) when price breaks above ORH, pulls back to it and closes above (long), or the same off ORL to the downside (short). Only the first retest after each break counts.")
+
+// ---- 5 · ADR / AWR ----------------------------------------------------------
+grpADR = "5 · Average daily / weekly range"
+showADR   = input.bool(true, "Show ADR", group=grpADR)
+adrType   = input.string("EMA", "ADR smoothing", options=["EMA", "SMA"], group=grpADR, inline="adr")
+adrLen    = input.int(14, "", minval=1, group=grpADR, inline="adr")
+adrOffset = input.int(0, "ADR days to exclude", minval=0, group=grpADR,
+     tooltip="0 = include today's range in the average (matches Paper Prophet).")
+showAWR   = input.bool(true, "Show AWR", group=grpADR)
+awrType   = input.string("SMA", "AWR smoothing", options=["SMA", "EMA"], group=grpADR, inline="awr")
+awrLen    = input.int(14, "", minval=1, group=grpADR, inline="awr")
+awrSource = input.string("High-Low", "AWR weekly range", options=["High-Low", "True Range"], group=grpADR)
+awrOffset = input.int(1, "AWR weeks to exclude", minval=0, group=grpADR,
+     tooltip="1 = completed weeks only, so the levels stay fixed all week. Defaults (SMA, 14, High-Low, 1) match Paper Prophet.")
+showUsedOnLines = input.bool(true, "Show % of range used on labels", group=grpADR,
+     tooltip="Today's range so far ÷ ADR (and this week's ÷ AWR). Near or above 100% means the usual move is already spent.")
+
+// ---- 6 · Level Behavior -----------------------------------------------------
+grpLB = "6 · Level behavior"
+levelColorMode = input.string("Jason (Paper Prophet)", "Level colors", options=["Jason (Paper Prophet)", "Support / resistance", "By level type"], group=grpLB,
+     tooltip="Jason (Paper Prophet): fixed colors per level, matching his chart. Gap line white dashed, gap fibs dark gold (0.5) and dark green (0.618/0.65), opening range yellow dotted, premarket orange, prev day gray, prev week dark teal, prev month dark gold, prev quarter dark red, AWR yellow/blue dotted, ADR as green/red stubs at the right edge. Support / resistance: above price red, below green, flipping when price crosses. By level type: the original NDTL colors.")
+labelMode      = input.string("Nearest only", "Labels", options=["Nearest only", "All levels"], group=grpLB, inline="lm")
+spotN          = input.int(2, "per side", minval=1, maxval=10, group=grpLB, inline="lm",
+     tooltip="Nearest only: label just the closest levels above and below price. The rest keep their line plus a small dot you can hover for the name and price.")
+showConfluence = input.bool(true, "Merge stacked levels into zones", group=grpLB, inline="cf")
+confTolAdr     = input.float(0.10, "within × ADR", minval=0.0, step=0.01, group=grpLB, inline="cf",
+     tooltip="Groups nearby levels under one stacked label. Not used with the Jason (Paper Prophet) colors, where every line keeps its own label in its own color.")
+showZoneBoxes  = input.bool(false, "Shade zones with a box", group=grpLB,
+     tooltip="Off: stacked levels share one label but no box is drawn behind them. On: a shaded box covers each zone.")
+lvLineWidth    = input.int(1, "Level line width", minval=1, maxval=4, group=grpLB,
+     tooltip="Width of every level line. The level nearest price is shown brighter, not thicker.")
+showProximity  = input.bool(true, "Highlight level near price", group=grpLB, inline="px")
+proxAdr        = input.float(0.15, "within × ADR", minval=0.0, step=0.01, group=grpLB, inline="px")
+showBrokenHeld = input.bool(true, "Fade broken levels, count holds", group=grpLB,
+     tooltip="During regular hours, a level price closes through fades and dashes. Hover a level label to see how many times it was tested and held.")
+breakTolAdr    = input.float(0.10, "Break = close beyond × ADR", minval=0.0, step=0.01, group=grpLB, inline="bk")
+breakBars      = input.int(2, "or closes in a row", minval=1, maxval=10, group=grpLB, inline="bk",
+     tooltip="A level only counts as broken after a close that far past it, or that many closes in a row on the other side. If price later breaks back the same way, the level lights up again.")
+labelBroken    = input.bool(false, "Keep labels on broken levels", group=grpLB)
+farAdr         = input.float(3.0, "Hide levels farther than × ADR", minval=0.0, step=0.5, group=grpLB,
+     tooltip="Keeps far-away levels from squashing the price scale. 0 = never hide.")
+labelGapAdr    = input.float(0.08, "Min label spacing × ADR", minval=0.0, step=0.01, group=grpLB,
+     tooltip="Labels closer than this are nudged apart. Lines stay at their true price.")
+
+// ---- 7 · MTFC ---------------------------------------------------------------
+grpMTFC = "7 · Multi-timeframe continuity"
+showMTFC      = input.bool(true, "Show MTFC bar", group=grpMTFC)
+mtfcPosition  = input.string("top_center", "Position", options=["top_left", "top_center", "top_right", "middle_left", "middle_right", "bottom_left", "bottom_center", "bottom_right"], group=grpMTFC, inline="pos")
+mtfcTextSize  = input.string("Small", "", options=["Tiny", "Small", "Normal", "Large"], group=grpMTFC, inline="pos")
+mtfcUse15m    = input.bool(false, "15m", group=grpMTFC, inline="tf1")
+mtfcUse1h     = input.bool(true,  "1h",  group=grpMTFC, inline="tf1")
+mtfcUse4h     = input.bool(true,  "4h",  group=grpMTFC, inline="tf1")
+mtfcUseD      = input.bool(true,  "D",   group=grpMTFC, inline="tf1")
+mtfcUseW      = input.bool(true,  "W",   group=grpMTFC, inline="tf2")
+mtfcUseM      = input.bool(false, "M",   group=grpMTFC, inline="tf2")
+mtfcUseQ      = input.bool(false, "Q",   group=grpMTFC, inline="tf2")
+mtfcUseY      = input.bool(false, "Y",   group=grpMTFC, inline="tf2")
+showTfTypes   = input.bool(false, "Show Strat candle type in each bar", group=grpMTFC)
+showPanelExtras = input.bool(false, "Extra rows: ADR/AWR used, next levels", group=grpMTFC)
+colorBarsMTFC = input.bool(true, "Color candles when MTFC is aligned", group=grpMTFC, inline="cb")
+mtfcBarStyle  = input.string("Outline", "", options=["Outline", "Whole candle"], group=grpMTFC, inline="cb",
+     tooltip="Teal when every selected timeframe is up, red when every one is down, normal when mixed. Outline: only the border and wick change, so the body still shows if that candle closed up or down.")
+useFTFCFilter = input.bool(true, "Strat signals require full MTFC", group=grpMTFC,
+     tooltip="Longs only fire when every selected timeframe is green; shorts only when every one is red.")
+
+// ---- 8 · Strat ---------------------------------------------------------------
+grpStrat = "8 · The Strat"
+showSetups  = input.bool(true, "Setups in waiting (trigger lines)", group=grpStrat,
+     tooltip="After the last closed bar, shows the price that would trigger the next entry (▲ / ▼). Hover a tag for details.")
+use212Rev   = input.bool(false, "2-1-2", group=grpStrat, inline="p1")
+use22Rev    = input.bool(false, "2-2 rev", group=grpStrat, inline="p1")
+use22Cont   = input.bool(false, "2-2 cont", group=grpStrat, inline="p1")
+use32Rev    = input.bool(false, "3-2", group=grpStrat, inline="p2")
+usePMG      = input.bool(false, "PMG", group=grpStrat, inline="p2")
+pmgChainMin = input.int(3, "chain", minval=2, group=grpStrat, inline="p2")
+useAdvanced = input.bool(false, "Advanced (3-2-2, 3-1-2, 1-2-2, 1-bar, 2-2-2)", group=grpStrat)
+showGrade   = input.bool(true, "Grade signals A / B / C", group=grpStrat,
+     tooltip="One point each: MTFC agrees, entry is at a key level, and the target is at least the minimum reward:risk. A = all three.")
+gradeNearAdr = input.float(0.15, "Grade: at level within × ADR", minval=0.0, step=0.01, group=grpStrat, inline="gr")
+gradeMinRR   = input.float(2.0, "min R", minval=0.5, step=0.1, group=grpStrat, inline="gr")
+showArrows     = input.bool(false, "Signal arrows",  group=grpStrat, inline="sd1")
+showPatternTag = input.bool(false, "Pattern names", group=grpStrat, inline="sd1")
+showCandleTag  = input.bool(false, "Candle numbers", group=grpStrat, inline="sd2")
+showSwings     = input.bool(false, "Swing points",  group=grpStrat, inline="sd2")
+ftfcAlerts     = input.bool(true, "MTFC alignment alerts", group=grpStrat)
+
+// ---- 9 · Strat trade levels (advanced) ---------------------------------------
+grpTrade = "9 · Strat trade levels"
+displayMode    = input.string("Off", "Entry / stop / target lines", options=["Off", "Latest Only", "All Signals"], group=grpTrade)
+showEntryLine  = input.bool(true, "Entry", group=grpTrade, inline="esl")
+showStopLine   = input.bool(true, "Stop",  group=grpTrade, inline="esl")
+showTargetLine = input.bool(true, "Target", group=grpTrade, inline="esl")
+useBodyEntries = input.bool(false, "Use candle body instead of wick", group=grpTrade)
+stopMode       = input.string("Wick", "Stop method", options=["Wick", "ATR"], group=grpTrade, inline="stp",
+     tooltip="Wick: stop at the signal candle's high (short) or low (long). ATR: stop placed a multiple of ATR from the entry.")
+atrLen         = input.int(14, "ATR length", minval=1, group=grpTrade, inline="atr")
+atrMult        = input.float(1.0, "x ATR", minval=0.1, step=0.1, group=grpTrade, inline="atr",
+     tooltip="Stop distance = ATR × this multiple. Uses the chart's own timeframe, so a 5-min chart uses 5-min ATR.")
+targetMode     = input.string("All Magnets (Strat)", "Target method", options=["All Magnets (Strat)", "Swing Only", "MA Only", "NDTL Gains Only", "Reward:Risk Ratio"], group=grpTrade)
+useMAsAsTargets = input.bool(true, "MAs as targets", group=grpTrade, inline="tg")
+usePPAsTargets  = input.bool(true, "Levels as targets", group=grpTrade, inline="tg")
+rrRatio       = input.float(2.0, "R:R (R:R mode)", minval=0.5, step=0.1, group=grpTrade, inline="rr")
+fallbackRR    = input.float(2.0, "fallback", minval=0.5, step=0.1, group=grpTrade, inline="rr")
+swingLeft     = input.int(5, "Swing pivot left / right", minval=1, group=grpTrade, inline="sp")
+swingRight    = input.int(5, "", minval=1, group=grpTrade, inline="sp")
+swingLookback = input.int(100, "Swing lookback (bars)", minval=10, group=grpTrade)
+useTimeFilter    = input.bool(true, "Only signal during", group=grpTrade, inline="ses")
+sess             = input.session("0930-1545", "", group=grpTrade, inline="ses")
+useTrend         = input.bool(false, "With 50 EMA trend", group=grpTrade, inline="tr")
+useMATrendFilter = input.bool(false, "With 200D trend", group=grpTrade, inline="tr")
+
+// ---- 10 · Gap & fibs ---------------------------------------------------------
+grpGap = "10 · Session gap and fibs"
+showGap    = input.bool(true, "Gap line (GC)", group=grpGap,
+     tooltip="Dashed line at the edge of the last 3-minute after-hours candle before the overnight gap (the 7:57 PM candle): its high on a gap up, its low on a gap down. Same value on every chart timeframe.")
+showFib    = input.bool(true, "Gap fibs (0.5, 0.618, 0.65)", group=grpGap,
+     tooltip="Measured from the premarket low up to the gap line on a gap down, or from the premarket high down to it on a gap up. Drawn from 9:30, once premarket is final. The 0.618-0.65 pocket is shaded gold.")
+colFib05   = input.color(color.new(color.gray, 20), "Fib colors 0.5 / 0.618 / 0.65", group=grpGap, inline="fc")
+colFib0618 = input.color(color.new(#f0b13a, 0), "", group=grpGap, inline="fc")
+colFib065  = input.color(color.new(#f0b13a, 0), "", group=grpGap, inline="fc")
+
+// =============================================================================
+// TIMEFRAME GUARD
+// =============================================================================
+tfMinutes = timeframe.in_seconds() / 60
+ppActive  = showPP and tfMinutes < maxTimeframeMin and not maOnlyMode
+
+// =============================================================================
+// SECTION 4: NDTL GAINS CALCULATIONS
+// =============================================================================
+// Speed: one request per timeframe returning all its MAs as a tuple
+// (was one request per MA).
+[rawSma20D, rawSma50D, rawSma200D] = request.security(syminfo.tickerid, "D", [ta.sma(close, 20), ta.sma(close, 50), ta.sma(close, 200)])
+[rawSma50W, rawSma200W]            = request.security(syminfo.tickerid, "W", [ta.sma(close, 50), ta.sma(close, 200)])
+sma20D  = ta.sma(rawSma20D,  smoothLen)
+sma50D  = ta.sma(rawSma50D,  smoothLen)
+sma200D = ta.sma(rawSma200D, smoothLen)
+sma50W  = ta.sma(rawSma50W,  smoothLen)
+sma200W = ta.sma(rawSma200W, smoothLen)
+
+p20 = plot(showMAs ? sma20D  : na, "20D",   color=color.white,                linewidth=1)
+p50 = plot(showMAs ? sma50D  : na, "50D",   color=color.blue,                 linewidth=1)
+// v2: trend ribbon — green while 20D is above 50D, red while below
+fill(p20, p50, color = showRibbon and showMAs and not na(sma20D) and not na(sma50D) ? (sma20D >= sma50D ? color.new(#26a69a, 93) : color.new(#ef5350, 93)) : na, title="20D/50D Ribbon")
+plot(showMAs ? sma200D : na, "200D",  color=color.red,                  linewidth=1)
+plot(showMAs ? sma200W : na, "200W",  color=color.purple,               linewidth=1)
+plot(showMAs ? sma50W  : na, "50W",   color=color.rgb(252, 0, 181),     linewidth=1)
+
+// v2: name tag at the right end of each MA
+var array<label> maTags = array.new<label>()
+if barstate.islast
+    while array.size(maTags) > 0
+        label.delete(array.pop(maTags))
+    if showMAs and showMATags
+        maVals  = array.from(sma20D, sma50D, sma200D, sma50W, sma200W)
+        maNames = array.from("20D", "50D", "200D", "50W", "200W")
+        maCols  = array.from(color.white, color.blue, color.red, color.rgb(252, 0, 181), color.purple)
+        for i = 0 to 4
+            v = array.get(maVals, i)
+            if not na(v)
+                // Plain colored text, no box, so the tags don't outshine the levels
+                array.push(maTags, label.new(bar_index + 1, v, array.get(maNames, i), style=label.style_label_left,
+                     color=color.new(color.black, 100), textcolor=color.new(array.get(maCols, i), 25), size=size.small,
+                     tooltip=array.get(maNames, i) + " SMA  " + str.tostring(v, format.mintick)))
+
+// =============================================================================
+// SECTION 5: SESSION-BOUND DATA CAPTURE
+// =============================================================================
+isNewDay = ta.change(time("D")) != 0
+inPM     = not na(time(timeframe.period, pmSess))
+inRTH    = not na(time(timeframe.period, rthSess))
+
+var int sessionStartBar = na
+var int rthStartBar = na
+
+if isNewDay
+    sessionStartBar := na
+    rthStartBar := na
+
+if inPM and na(sessionStartBar)
+    sessionStartBar := bar_index
+
+if inRTH and na(rthStartBar)
+    rthStartBar := bar_index
+
+if inRTH and na(sessionStartBar)
+    sessionStartBar := bar_index
+
+// Speed: everything each higher timeframe provides is fetched in ONE request
+// as a tuple: prior-period H/L, current open/close (for MTFC), and the
+// ADR/AWR averages. Was 26 separate requests, now 8.
+f_trAt(simple int off) =>
+    math.max(high[off] - low[off], math.abs(high[off] - close[1 + off]), math.abs(low[off] - close[1 + off]))
+
+f_adrCalc() =>
+    adrType == "SMA" ? ta.sma(f_trAt(adrOffset), adrLen) : ta.ema(f_trAt(adrOffset), adrLen)
+
+// Paper Prophet's AWR: 14-week SMA of each completed week's high-low,
+// projected from the weekly open. Verified against AAPL weekly data.
+f_weekRange(simple int off, simple string srcType) =>
+    srcType == "True Range" ? f_trAt(off) : high[off] - low[off]
+
+f_awrCalc() =>
+    awrType == "SMA" ? ta.sma(f_weekRange(awrOffset, awrSource), awrLen) : ta.ema(f_weekRange(awrOffset, awrSource), awrLen)
+
+// v2: each tuple also returns the current high/low so the info panel can
+// show every timeframe's Strat candle type (1 / 2u / 2d / 3).
+[prevDailyHigh, prevDailyLow, todayOpenD, dailyADRSmooth, hD_f, lD_f] = request.security(syminfo.tickerid, "D", [high[1], low[1], open, f_adrCalc(), high, low], lookahead=barmerge.lookahead_on)
+[prevWeeklyHigh, prevWeeklyLow, weeklyOpen, weeklyAWRSmooth, hW_f, lW_f] = request.security(syminfo.tickerid, "W", [high[1], low[1], open, f_awrCalc(), high, low], lookahead=barmerge.lookahead_on)
+[prevMonthlyHigh, prevMonthlyLow, oM_f, hM_f, lM_f] = request.security(syminfo.tickerid, "M",  [high[1], low[1], open, high, low], lookahead=barmerge.lookahead_on)
+[prevQuarterlyHigh, prevQuarterlyLow, oQ_f, hQ_f, lQ_f] = request.security(syminfo.tickerid, "3M", [high[1], low[1], open, high, low], lookahead=barmerge.lookahead_on)
+[oY_f, hY_f,   lY_f,   phY_f,   plY_f]   = request.security(syminfo.tickerid, "12M", [open, high, low, high[1], low[1]], lookahead=barmerge.lookahead_on)
+[o15m_f, h15m_f, l15m_f, ph15m_f, pl15m_f] = request.security(syminfo.tickerid, "15",  [open, high, low, high[1], low[1]], lookahead=barmerge.lookahead_on)
+[o1h_f, h1h_f,  l1h_f,  ph1h_f,  pl1h_f]  = request.security(syminfo.tickerid, "60",  [open, high, low, high[1], low[1]], lookahead=barmerge.lookahead_on)
+[o4h_f, h4h_f,  l4h_f,  ph4h_f,  pl4h_f]  = request.security(syminfo.tickerid, "240", [open, high, low, high[1], low[1]], lookahead=barmerge.lookahead_on)
+
+// Strat candle type from a bar's high/low vs the prior bar's high/low
+f_stratType(float h, float l, float ph, float pl) =>
+    string t = "–"
+    if not na(h) and not na(ph)
+        t := h > ph and l < pl ? "3" : h > ph ? "2u" : l < pl ? "2d" : "1"
+    t
+
+var float pmHigh = na
+var float pmLow  = na
+if isNewDay
+    pmHigh := na
+    pmLow  := na
+if inPM
+    pmHigh := na(pmHigh) ? high : math.max(pmHigh, high)
+    pmLow  := na(pmLow)  ? low  : math.min(pmLow,  low)
+
+// =============================================================================
+// OPENING RANGE — three modes: Opening impulse (default), Time window, Confirmed swing
+//
+// TIME-BASED (default, useTimeBasedOR = true):
+//   - High/low of the first orMinutes-minute bar of RTH (default 10 = 9:30-9:40, matches Paper Prophet)
+//   - Pulled from orMinutes data, so identical on every chart timeframe
+//
+// CONFIRMED-SWING (useTimeBasedOR = false, Paper Prophet test):
+//   Each side tracks the running extreme from 9:30 on orConfirmTf candles.
+//   OR High locks after orConfirmBars consecutive red/flat closes following
+//   the running high; OR Low after orConfirmBars consecutive green closes
+//   following the running low. A new extreme restarts that side's count.
+//   Never locks before orMinMinutes; force-locks at orMaxMinutes.
+//
+// Both modes maintain identical downstream variables: orHigh, orLow, orLocked.
+// =============================================================================
+
+var int   rthStartTime         = na
+var float orHigh               = na
+var float orLow                = na
+var bool  orHighLocked         = false
+var bool  orLowLocked          = false
+
+if isNewDay
+    rthStartTime       := na
+    orHigh             := na
+    orLow              := na
+    orHighLocked       := false
+    orLowLocked        := false
+
+if inRTH and not inRTH[1]
+    rthStartTime := time
+
+// === MODE 1: TIME-BASED OR (timeframe-independent) ===
+// Runs on orMinutes-minute bars, not chart bars, and returns the high/low of
+// the first RTH bar of the day. This is what makes the OR the same on a 15s,
+// 1m, 5m or 15m chart (Paper Prophet behaviour). The old version accumulated
+// chart bars, so on a 15m chart the "15-min OR" was just the whole first 15m
+// candle and on seconds charts it was a different window again.
+f_firstRthBar() =>
+    var float h = na
+    var float l = na
+    var int   t = na
+    bool r      = not na(time(timeframe.period, rthSess))
+    bool newDay = ta.change(time("D")) != 0
+    if r and (not r[1] or newDay)
+        h := high
+        l := low
+        t := time
+    [h, l, t]
+
+[orTfHigh, orTfLow, orTfTime] = request.security(syminfo.tickerid, str.tostring(orMinutes), f_firstRthBar(), lookahead=barmerge.lookahead_off)
+
+if useTimeBasedOR
+    // lookahead_off: today's value only arrives once the OR bar has closed
+    // (9:35 for a 5-min OR), so nothing repaints. Before that, the request
+    // still holds yesterday's OR, which the time check filters out.
+    orIsToday = not na(orTfTime) and not na(rthStartTime) and orTfTime >= rthStartTime - orMinutes * 60 * 1000
+    if orIsToday
+        orHigh       := orTfHigh
+        orLow        := orTfLow
+        orHighLocked := true
+        orLowLocked  := true
+
+// === MODE 2: CONFIRMED-SWING OR (Paper Prophet test) ===
+// Runs on orConfirmTf candles (default 1m) so it's timeframe-independent.
+// Returns the locked high/low (na until locked) plus the session start time.
+f_confirmedOR(simple int nBars, simple int minMin, simple int maxMin) =>
+    var float candH = na
+    var float candL = na
+    var float lockH = na
+    var float lockL = na
+    var int   dnCnt = 0
+    var int   upCnt = 0
+    var int   t0    = na
+    bool r      = not na(time(timeframe.period, rthSess))
+    bool newDay = ta.change(time("D")) != 0
+    bool isDn   = close <= open
+    bool isUp   = close > open
+    if r and (not r[1] or newDay)
+        // First candle of RTH: start both sides fresh
+        t0    := time
+        candH := high
+        candL := low
+        lockH := na
+        lockL := na
+        dnCnt := isDn ? 1 : 0
+        upCnt := isUp ? 1 : 0
+    else if r and not na(t0)
+        // --- high side: a new high restarts the red-candle count ---
+        if na(lockH)
+            if high > candH
+                candH := high
+                dnCnt := isDn ? 1 : 0
+            else
+                dnCnt := isDn ? dnCnt + 1 : 0
+        // --- low side: a new low restarts the green-candle count ---
+        if na(lockL)
+            if low < candL
+                candL := low
+                upCnt := isUp ? 1 : 0
+            else
+                upCnt := isUp ? upCnt + 1 : 0
+    // Lock checks use the candle's CLOSE time so the minimum window is exact
+    if r and not na(t0)
+        elapsed = time_close - t0
+        if na(lockH) and elapsed >= minMin * 60000 and (dnCnt >= nBars or elapsed >= maxMin * 60000)
+            lockH := candH
+        if na(lockL) and elapsed >= minMin * 60000 and (upCnt >= nBars or elapsed >= maxMin * 60000)
+            lockL := candL
+    [lockH, lockL, t0]
+
+[cfHigh, cfLow, cfStart] = request.security(syminfo.tickerid, orConfirmTf, f_confirmedOR(orConfirmBars, orMinMinutes, orMaxMinutes), lookahead=barmerge.lookahead_off)
+
+// === MODE 3: OPENING IMPULSE OR (Paper Prophet test) ===
+// Each side follows the running extreme from 9:30 and locks the moment price
+// snaps back from it by revPct % (the "fast wick away" from that level).
+f_impulseOR(simple bool byRange, simple float rngPct, simple float revPct, simple int minMin, simple int maxMin, simple bool skipOpen) =>
+    var float candH = na
+    var float candL = na
+    var float lockH = na
+    var float lockL = na
+    var float lowSinceH  = na   // lowest price since the running high was set
+    var float highSinceL = na   // highest price since the running low was set
+    var int   t0    = na
+    bool r      = not na(time(timeframe.period, rthSess))
+    bool newDay = ta.change(time("D")) != 0
+    if r and (not r[1] or newDay)
+        t0         := time
+        // Skipping the opening print: the first candle's wicks (the 9:30
+        // auction spike) don't count, only where it closed
+        candH      := skipOpen ? close : high
+        candL      := skipOpen ? close : low
+        lockH      := na
+        lockL      := na
+        lowSinceH  := close
+        highSinceL := close
+    else if r and not na(t0)
+        // A new extreme restarts its snap-back measurement from this candle's close
+        if na(lockH) and high > candH
+            candH     := high
+            lowSinceH := close
+        else
+            lowSinceH := math.min(lowSinceH, low)
+        if na(lockL) and low < candL
+            candL      := low
+            highSinceL := close
+        else
+            highSinceL := math.max(highSinceL, high)
+    if r and not na(t0)
+        elapsed = time_close - t0
+        okMin   = elapsed >= minMin * 60000
+        forced  = elapsed >= maxMin * 60000
+        rng     = candH - candL
+        needH   = byRange ? rng * rngPct / 100 : candH * revPct / 100
+        needL   = byRange ? rng * rngPct / 100 : candL * revPct / 100
+        if na(lockH) and okMin and ((rng > 0 and candH - lowSinceH >= needH) or forced)
+            lockH := candH
+        if na(lockL) and okMin and ((rng > 0 and highSinceL - candL >= needL) or forced)
+            lockL := candL
+    [lockH, lockL, t0]
+
+[imHigh, imLow, imStart] = request.security(syminfo.tickerid, orConfirmTf, f_impulseOR(orImpulseBy == "% of range", orImpulseRng, orImpulsePct, orMinMinutes, orMaxMinutes, orSkipOpen), lookahead=barmerge.lookahead_off)
+
+if useImpulseOR
+    imIsToday = not na(imStart) and not na(rthStartTime) and imStart >= rthStartTime - 5 * 60 * 1000
+    if imIsToday
+        if not na(imHigh)
+            orHigh       := imHigh
+            orHighLocked := true
+        if not na(imLow)
+            orLow        := imLow
+            orLowLocked  := true
+
+if not useTimeBasedOR and not useImpulseOR
+    cfIsToday = not na(cfStart) and not na(rthStartTime) and cfStart >= rthStartTime - 5 * 60 * 1000
+    if cfIsToday
+        // Each side appears independently the moment it confirms
+        if not na(cfHigh)
+            orHigh       := cfHigh
+            orHighLocked := true
+        if not na(cfLow)
+            orLow        := cfLow
+            orLowLocked  := true
+
+orLocked = orHighLocked and orLowLocked
+
+// Session gap: the overnight break in TradingView's data (8 PM - 4 AM with
+// extended hours). Gap level (GC) = the edge of the last 3-minute candle before
+// the break (the 7:57 PM candle): its HIGH on a gap up, its LOW on a gap down.
+// Read from 3-min data so it's the same on every chart timeframe, and drawn
+// from the last chart candle before the break.
+gapHours = (time - time[1]) / (60 * 60 * 1000)
+isSessionGap = isNewDay and gapHours >= 5
+
+// Runs on 3-min candles: at the first candle after the overnight gap, remember
+// the low of the candle just before it. Uses only the prior candle, so
+// lookahead_on just makes it available at 4:00 without peeking ahead.
+f_preGapHL() =>
+    var float gl = na
+    var float gh = na
+    bool nd = ta.change(time("D")) != 0
+    if nd and (time - time[1]) >= 5 * 60 * 60 * 1000
+        gl := low[1]
+        gh := high[1]
+    [gl, gh]
+[preGapLow3m, preGapHigh3m] = request.security(syminfo.tickerid, "3", f_preGapHL(), lookahead=barmerge.lookahead_on)
+
+var float gapLevel = na
+var float gapNewOpen   = na
+var int   gapBar       = na
+
+if isNewDay
+    gapLevel := na
+    gapNewOpen   := na
+    gapBar       := na
+
+if isSessionGap
+    // The gap edge is the side of the last candle that faces the new open:
+    // its HIGH when the session opens above it (gap up), its LOW when it opens
+    // below it (gap down). An open inside the candle uses the nearer side.
+    pgLo = na(preGapLow3m)  ? low[1]  : preGapLow3m
+    pgHi = na(preGapHigh3m) ? high[1] : preGapHigh3m
+    gapLevel := open >= (pgLo + pgHi) / 2 ? pgHi : pgLo
+    gapNewOpen   := open
+    gapBar       := bar_index - 1
+
+adrHigh = todayOpenD + dailyADRSmooth
+adrLow  = todayOpenD - dailyADRSmooth
+
+awrHigh = weeklyOpen + weeklyAWRSmooth
+awrLow  = weeklyOpen - weeklyAWRSmooth
+
+// Exact AWR values in the Data Window only (no line drawn, no effect on the
+// price scale), so they can be compared to other scripts to the cent.
+plot(awrHigh, "AWR High", color=color.yellow, display=display.data_window)
+plot(awrLow,  "AWR Low",  color=color.blue,   display=display.data_window)
+plot(weeklyAWRSmooth, "AWR Size", color=color.gray, display=display.data_window)
+
+// Gap fibs: from the premarket extreme back toward the gap close.
+// Gap down (4 AM opens at/below the close) -> from the premarket LOW up.
+// Gap up -> from the premarket HIGH down. 1.0 is the gap close itself.
+gapDown = not na(gapNewOpen) and not na(gapLevel) and gapNewOpen <= gapLevel
+gapExt  = gapDown ? pmLow : pmHigh
+calcFib(float ratio) =>
+    na(gapLevel) or na(gapExt) ? na : gapExt + (gapLevel - gapExt) * ratio
+
+gapFib05   = calcFib(0.5)
+gapFib0618 = calcFib(0.618)
+gapFib065  = calcFib(0.65)
+
+// =============================================================================
+// SECTION 6: LEVEL REGISTRY + DRAWING (v2)
+// Every level lives in one fixed-order list (index 0..19). That lets the
+// script treat them as a group: merge levels that stack (confluence zones),
+// highlight the one price is testing, dim the ones price closed through, and
+// hide the far-away ones. Only the latest session is drawn (earlier days were
+// always deleted at the next open anyway), and drawing happens on the last bar.
+// =============================================================================
+LV_N = 20
+var array<string> lvNames = array.from("Prev Daily High", "Prev Daily Low", "Prev Weekly High", "Prev Weekly Low", "Prev Monthly High", "Prev Monthly Low", "Prev Quarterly High", "Prev Quarterly Low", "Premarket High", "Premarket Low", "Opening Range High", "Opening Range Low", "Gap Line (7:57 low)", "Avg Weekly Range High", "Avg Weekly Range Low", "ADR High", "ADR Low", "Gap Fib 0.5", "Gap Fib 0.618", "Gap Fib 0.65")
+var array<string> lvCodes = array.from("PDH", "PDL", "PWH", "PWL", "PMH", "PML", "PQH", "PQL", "PreH", "PreL", "ORH", "ORL", "GC", "AWR↑", "AWR↓", "ADR↑", "ADR↓", "F.5", "F.618", "F.65")
+var array<color>  lvCols  = array.from(color.white, color.white, color.aqua, color.aqua, color.yellow, color.yellow, color.red, color.red, color.orange, color.orange, color.yellow, color.yellow, color.white, color.yellow, color.blue, #26a69a, #ef5350, colFib05, colFib0618, colFib065)
+// Line style per level: 0 solid, 1 dashed, 2 dotted
+var array<int>    lvStyle = array.from(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2)
+// "Jason (Paper Prophet)" scheme, measured from his charts:
+//   gap line white dashed, gap fib 0.5 dark gold, 0.618/0.65 dark green,
+//   opening range yellow dotted, premarket orange, prev day gray,
+//   prev week dark teal, prev month dark gold, prev quarter dark red, AWR yellow/blue dotted,
+//   ADR green/red stubs at the right edge (from his Inputs and Style tabs)
+var array<color>  lvColsPP  = array.from(#4d4d51, #4d4d51, #086775, #086775, #ac9f2e, #ac9f2e, #6b0c0c, #6b0c0c, #c37706, #c37706, #ffeb3b, #ffeb3b, #ffffff, #ffeb3b, #2962ff, #067a43, #863031, #867c25, #064d22, #064d22)
+var array<int>    lvStylePP = array.from(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 2, 1, 2, 2, 0, 0, 0, 0, 0)
+// ADR is drawn as a short thick stub at the right edge in this scheme
+LV_ADRH = 15
+LV_ADRL = 16
+PP_STUB_BARS = 12
+// Line width multiplier per level (all equal; width is set by "Level line width")
+var array<int>    lvWidth = array.from(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+// Where the line starts: 0 = RTH open, 1 = session (premarket) open,
+// 2 = the last candle before the overnight gap
+var array<int>    lvStart = array.from(0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 2, 1, 1, 0, 0, 0, 0, 0)
+// Index of the gap fibs. They keep their own colors (gray 0.5, gold pocket)
+// even in support/resistance mode so they never look like a PDH/PDL line.
+LV_F5   = 17
+LV_F618 = 18
+LV_F65  = 19
+
+// The opening range never fades or hides when price breaks it: the break and
+// the retest from the other side are the trade, so ORH/ORL stay fully drawn.
+LV_ORH = 10
+LV_ORL = 11
+f_isOR(int i) =>
+    i == LV_ORH or i == LV_ORL
+
+f_lvStartBar(int s) =>
+    s == 0 ? rthStartBar : s == 2 ? gapBar : sessionStartBar
+
+// Lighten a color toward white so dark line colors stay readable as label text
+f_lighten(color c, float amt) =>
+    color.rgb(color.r(c) + (255 - color.r(c)) * amt, color.g(c) + (255 - color.g(c)) * amt, color.b(c) + (255 - color.b(c)) * amt)
+
+f_lvStyle(int s) =>
+    s == 1 ? line.style_dashed : s == 2 ? line.style_dotted : line.style_solid
+
+lblSizeConst = labelTextSize == "Huge" ? size.huge : labelTextSize == "Large" ? size.large : labelTextSize == "Normal" ? size.normal : labelTextSize == "Small" ? size.small : size.tiny
+
+// Only the latest session is ever drawn or tracked
+isToday = dayofmonth(time) == dayofmonth(last_bar_time) and month(time) == month(last_bar_time) and year(time) == year(last_bar_time)
+
+f_lvPrices() =>
+    array.from(prevDailyHigh, prevDailyLow, prevWeeklyHigh, prevWeeklyLow, prevMonthlyHigh, prevMonthlyLow, prevQuarterlyHigh, prevQuarterlyLow, pmHigh, pmLow, orHigh, orLow, gapLevel, awrHigh, awrLow, adrHigh, adrLow, gapFib05, gapFib0618, gapFib065)
+
+f_lvShow() =>
+    rthOn  = not na(rthStartBar)
+    // Fibs wait for 9:30 so the premarket extreme they measure from is final
+    fibOn  = showFib and rthOn
+    array.from(showDailyHL and rthOn, showDailyHL and rthOn, showWeeklyHL and rthOn, showWeeklyHL and rthOn, showMonthlyHL and rthOn, showMonthlyHL and rthOn, showQuarterlyHL and rthOn, showQuarterlyHL and rthOn, showPM, showPM, showOR and rthOn, showOR and rthOn, showGap, showAWR, showAWR, showADR and rthOn, showADR and rthOn, fibOn, fibOn, fibOn)
+
+// ---- Broken / held tracking (RTH bars of the latest session only) ----
+// lvOrigin: which side price was on when the level first appeared (1 above, -1 below)
+// lvSide:   the side price is CONFIRMED on now (only flips on a real break)
+// lvPend:   closes in a row on the far side, waiting to confirm a break
+// A level is "broken" while lvSide differs from lvOrigin, so it lights back up
+// if price breaks back to where it started.
+var array<int> lvOrigin    = array.new<int>(LV_N, 0)
+var array<int> lvSide      = array.new<int>(LV_N, 0)
+var array<int> lvPend      = array.new<int>(LV_N, 0)
+var array<int> lvHold      = array.new<int>(LV_N, 0)
+var array<int> lvLastTouch = array.new<int>(LV_N, -10)
+
+if isNewDay
+    array.fill(lvOrigin, 0)
+    array.fill(lvSide, 0)
+    array.fill(lvPend, 0)
+    array.fill(lvHold, 0)
+    array.fill(lvLastTouch, -10)
+
+if isToday and inRTH and ppActive and showBrokenHeld
+    pr = f_lvPrices()
+    adrB = na(dailyADRSmooth) or dailyADRSmooth <= 0 ? close * 0.01 : dailyADRSmooth
+    breakTol = breakTolAdr * adrB
+    for i = 0 to LV_N - 1
+        p = array.get(pr, i)
+        if not na(p)
+            side    = close > p ? 1 : close < p ? -1 : 0
+            confSide = array.get(lvSide, i)
+            touched = high >= p and low <= p
+            if confSide == 0
+                // First time we see this level: remember where price started
+                if side != 0
+                    array.set(lvOrigin, i, side)
+                    array.set(lvSide, i, side)
+            else if side != 0 and side != confSide
+                // Closed on the far side: confirm the break on a big close
+                // or after enough closes in a row
+                pend = array.get(lvPend, i) + 1
+                if pend >= breakBars or math.abs(close - p) >= breakTol
+                    array.set(lvSide, i, side)
+                    array.set(lvPend, i, 0)
+                else
+                    array.set(lvPend, i, pend)
+            else if side == confSide
+                array.set(lvPend, i, 0)
+                // Wicked through but closed back on its side = a hold
+                if touched and bar_index - array.get(lvLastTouch, i) > 1
+                    array.set(lvHold, i, array.get(lvHold, i) + 1)
+            if touched
+                array.set(lvLastTouch, i, bar_index)
+
+// ---- v2: Opening range retest (break → pull back to the level → close holds) ----
+// Up side: close above ORH = break. Price must then move at least `tol` away
+// (armed) before a pullback counts. A pullback that tags ORH (+tol) and closes
+// above it is the retest. Closing back inside the range cancels the break.
+var bool orUpBroken = false
+var bool orUpArmed  = false
+var bool orUpDone   = false
+var bool orDnBroken = false
+var bool orDnArmed  = false
+var bool orDnDone   = false
+if isNewDay
+    orUpBroken := false
+    orUpArmed  := false
+    orUpDone   := false
+    orDnBroken := false
+    orDnArmed  := false
+    orDnDone   := false
+
+orRetestUp = false
+orRetestDn = false
+if showORRetest and showOR and ppActive and inRTH and orLocked and not na(orHigh) and not na(orLow)
+    adrR = na(dailyADRSmooth) or dailyADRSmooth <= 0 ? close * 0.01 : dailyADRSmooth
+    tol  = orRetestTolAdr * adrR
+    // ---- ORH ----
+    if orUpBroken and close < orHigh
+        orUpBroken := false
+        orUpArmed  := false
+        orUpDone   := false
+    else if not orUpBroken and close > orHigh
+        orUpBroken := true
+    else if orUpBroken and not orUpDone
+        if not orUpArmed and low > orHigh + tol
+            orUpArmed := true
+        else if orUpArmed and low <= orHigh + tol and close > orHigh
+            orRetestUp := true
+            orUpDone   := true
+    // ---- ORL ----
+    if orDnBroken and close > orLow
+        orDnBroken := false
+        orDnArmed  := false
+        orDnDone   := false
+    else if not orDnBroken and close < orLow
+        orDnBroken := true
+    else if orDnBroken and not orDnDone
+        if not orDnArmed and high < orLow - tol
+            orDnArmed := true
+        else if orDnArmed and high >= orLow - tol and close < orLow
+            orRetestDn := true
+            orDnDone   := true
+
+// No chart markers for OR retests (diamonds removed); they only drive the alerts below
+alertcondition(orRetestUp, "OR retest held - long",  "{{ticker}}: pulled back to ORH and held")
+alertcondition(orRetestDn, "OR retest held - short", "{{ticker}}: pulled back to ORL and held")
+
+// ---- Drawing (last bar only) ----
+var array<line>  lvLines  = array.new<line>()
+var array<label> lvLabels = array.new<label>()
+var array<box>   lvBoxes  = array.new<box>()
+
+// Nearest visible levels above/below price, shared with the info panel
+var float  nextUpP    = na
+var string nextUpCode = ""
+var float  nextDnP    = na
+var string nextDnCode = ""
+
+if barstate.islast
+    while array.size(lvLines) > 0
+        line.delete(array.pop(lvLines))
+    while array.size(lvLabels) > 0
+        label.delete(array.pop(lvLabels))
+    while array.size(lvBoxes) > 0
+        box.delete(array.pop(lvBoxes))
+    nextUpP    := na
+    nextUpCode := ""
+    nextDnP    := na
+    nextDnCode := ""
+
+    if ppActive and not na(sessionStartBar)
+        adrV   = na(dailyADRSmooth) or dailyADRSmooth <= 0 ? close * 0.01 : dailyADRSmooth
+        confTol = confTolAdr * adrV
+        proxTol = proxAdr * adrV
+        pr  = f_lvPrices()
+        shw = f_lvShow()
+
+        // Collect visible levels
+        visP = array.new<float>()
+        visI = array.new<int>()
+        for i = 0 to LV_N - 1
+            p = array.get(pr, i)
+            stB = f_lvStartBar(array.get(lvStart, i))
+            farOk = farAdr <= 0 or math.abs(p - close) <= farAdr * adrV
+            if array.get(shw, i) and not na(p) and not na(stB) and farOk
+                array.push(visP, p)
+                array.push(visI, i)
+
+        nVis = array.size(visP)
+        if nVis > 0
+            ord = array.sort_indices(visP, order.ascending)
+            // % of the average range already used, shown on the ADR/AWR label
+            // nearest to price (the other one is often hidden as "far")
+            adrUsedPct = (hD_f - lD_f) / adrV
+            awrUsedPct = na(weeklyAWRSmooth) or weeklyAWRSmooth <= 0 ? na : (hW_f - lW_f) / weeklyAWRSmooth
+            adrTagIdx  = math.abs(adrHigh - close) <= math.abs(adrLow - close) ? 15 : 16
+            awrTagIdx  = math.abs(awrHigh - close) <= math.abs(awrLow - close) ? 13 : 14
+            labelGap   = labelGapAdr * adrV
+            float lastLabelY = na
+            bySide = levelColorMode == "Support / resistance"
+            ppMode = levelColorMode == "Jason (Paper Prophet)"
+            // Spotlight: find the cut-offs = the Nth nearest labelled group
+            // above and below price. Groups outside them get a dot, not a label.
+            float upCut = na
+            float dnCut = na
+            if labelMode == "Nearest only"
+                upMids = array.new<float>()
+                dnMids = array.new<float>()
+                ps = 0
+                for k = 0 to nVis
+                    cg = k == nVis
+                    if not cg and k > ps
+                        cg := not showConfluence or ppMode or array.get(visP, array.get(ord, k)) - array.get(visP, array.get(ord, k - 1)) > confTol
+                    if cg and k > ps
+                        live = false
+                        for m = ps to k - 1
+                            li  = array.get(visI, array.get(ord, m))
+                            brk = showBrokenHeld and not f_isOR(li) and array.get(lvOrigin, li) != 0 and array.get(lvSide, li) != array.get(lvOrigin, li)
+                            live := live or not brk or labelBroken
+                        if live
+                            gm = (array.get(visP, array.get(ord, ps)) + array.get(visP, array.get(ord, k - 1))) / 2
+                            if gm >= close
+                                array.push(upMids, gm)
+                            else
+                                array.push(dnMids, gm)
+                        ps := k
+                array.sort(upMids, order.ascending)
+                array.sort(dnMids, order.descending)
+                upCut := array.size(upMids) == 0 ? close : array.get(upMids, math.min(spotN, array.size(upMids)) - 1)
+                dnCut := array.size(dnMids) == 0 ? close : array.get(dnMids, math.min(spotN, array.size(dnMids)) - 1)
+            // Fib shading: gold from 0.5 to 0.618, green across the 0.618-0.65 pocket
+            if not na(rthStartBar)
+                pkX = math.max(rthStartBar, bar_index - 1900)
+                if array.includes(visI, LV_F5) and array.includes(visI, LV_F618)
+                    array.push(lvBoxes, box.new(pkX, math.max(gapFib05, gapFib0618), bar_index, math.min(gapFib05, gapFib0618), border_color=color.new(#c9b037, 100), bgcolor=color.new(#c9b037, 88)))
+                if array.includes(visI, LV_F618) and array.includes(visI, LV_F65)
+                    array.push(lvBoxes, box.new(pkX, math.max(gapFib0618, gapFib065), bar_index, math.min(gapFib0618, gapFib065), border_color=color.new(#2e9e5b, 100), bgcolor=color.new(#2e9e5b, 80)))
+            // Walk levels low -> high, grouping neighbours within confTol
+            gStart = 0
+            for k = 0 to nVis
+                closeGroup = k == nVis
+                if not closeGroup and k > gStart
+                    pPrev = array.get(visP, array.get(ord, k - 1))
+                    pCur  = array.get(visP, array.get(ord, k))
+                    closeGroup := not showConfluence or ppMode or pCur - pPrev > confTol
+                if closeGroup and k > gStart
+                    gSize = k - gStart
+                    gLo = 1e10
+                    gHi = -1e10
+                    gLeft = bar_index
+                    gNames = array.new<string>()
+                    gCodes = array.new<string>()
+                    gTips  = array.new<string>()
+                    gAllBroken = true
+                    gOnlyPocket = true
+                    gNear = false
+                    gCol = color.white
+                    for m = gStart to k - 1
+                        vi  = array.get(ord, m)
+                        i   = array.get(visI, vi)
+                        p   = array.get(visP, vi)
+                        // Never anchor further back than the history buffer allows
+                        isStub = ppMode and (i == LV_ADRH or i == LV_ADRL)
+                        stB = isStub ? bar_index - PP_STUB_BARS : math.max(f_lvStartBar(array.get(lvStart, i)), bar_index - 1900)
+                        isBroken = showBrokenHeld and not f_isOR(i) and array.get(lvOrigin, i) != 0 and array.get(lvSide, i) != array.get(lvOrigin, i)
+                        nHold    = showBrokenHeld ? array.get(lvHold, i) : 0
+                        isNear   = showProximity and math.abs(close - p) <= proxTol
+                        baseCol  = ppMode ? array.get(lvColsPP, i) : bySide and i < LV_F5 ? (p >= close ? #ef5350 : #26a69a) : array.get(lvCols, i)
+                        lnCol    = isBroken ? color.new(baseCol, 75) : isNear or ppMode ? color.new(baseCol, 0) : color.new(baseCol, 35)
+                        ln = line.new(stB, p, bar_index, p, color=lnCol)
+                        line.set_style(ln, isBroken and not ppMode ? line.style_dashed : f_lvStyle(array.get(ppMode ? lvStylePP : lvStyle, i)))
+                        line.set_width(ln, isStub ? 3 : array.get(lvWidth, i) * lvLineWidth)
+                        array.push(lvLines, ln)
+                        gLo := math.min(gLo, p)
+                        gHi := math.max(gHi, p)
+                        gLeft := math.min(gLeft, stB)
+                        gNear := gNear or isNear
+                        gOnlyPocket := gOnlyPocket and (i == LV_F618 or i == LV_F65)
+                        gCol := m == gStart ? baseCol : gCol
+                        usedTxt = ""
+                        if showUsedOnLines and i == adrTagIdx and not na(adrUsedPct)
+                            usedTxt := " " + str.tostring(math.round(adrUsedPct * 100)) + "%"
+                        if showUsedOnLines and i == awrTagIdx and not na(awrUsedPct)
+                            usedTxt := " " + str.tostring(math.round(awrUsedPct * 100)) + "%"
+                        stateFull = isBroken ? " · broken" : nHold > 0 ? " · tested & held " + str.tostring(nHold) + "×" : ""
+                        // Chart labels stay clean; hold counts live in the hover tooltip only
+                        stateShort = isBroken ? " ✕" : ""
+                        array.push(gTips, array.get(lvNames, i) + stateFull + (usedTxt != "" ? " ·" + usedTxt + " of avg range used" : "") + "  " + str.tostring(p, format.mintick))
+                        // Broken levels keep their faded line but drop out of the label
+                        if not isBroken or labelBroken
+                            gAllBroken := false
+                            array.push(gNames, array.get(lvNames, i) + (labelDetail == "Full" ? stateFull + (usedTxt != "" ? " ·" + usedTxt + " used" : "") : stateShort + usedTxt))
+                            array.push(gCodes, array.get(lvCodes, i) + stateShort + usedTxt)
+                        // Nearest levels for the panel (broken ones still count)
+                        if p > close and (na(nextUpP) or p < nextUpP)
+                            nextUpP    := p
+                            nextUpCode := array.get(lvCodes, i)
+                        if p < close and (na(nextDnP) or p > nextDnP)
+                            nextDnP    := p
+                            nextDnCode := array.get(lvCodes, i)
+                    rawMid  = (gLo + gHi) / 2
+                    sideCol = rawMid >= close ? #ef5350 : #26a69a
+                    zoneCol = bySide ? sideCol : #f0b13a
+                    if showLineLabels and array.size(gNames) > 0
+                        inSpot = labelMode == "All levels" or (rawMid <= upCut and rawMid >= dnCut)
+                        if inSpot
+                            midP = rawMid
+                            nLines = gSize > 1 ? array.size(gCodes) : 1
+                            halfH  = (nLines - 1) * labelGap * 0.5
+                            // Groups are walked low -> high, so push a label up if
+                            // it would sit on top of the one below it
+                            // (stacked zone labels are taller, so count their full height)
+                            if not na(lastLabelY) and (midP - halfH) - lastLabelY < labelGap
+                                midP := lastLabelY + labelGap + halfH
+                            lastLabelY := midP + halfH
+                            useCodes = labelDetail == "Compact"
+                            lblArr = array.copy(useCodes ? gCodes : gNames)
+                            array.reverse(lblArr)
+                            txt   = " " + array.join(lblArr, gSize > 1 ? "\n " : " · ") + (gNear ? "  ◀" : "")
+                            txCol = gSize > 1 ? color.new(zoneCol, gNear ? 0 : 10) : (ppMode ? f_lighten(gCol, 0.35) : color.new(gCol, gNear ? 0 : 25))
+                            array.push(lvLabels, label.new(bar_index, midP, txt, style=label.style_label_left, color=color.new(color.black, 100), textcolor=txCol, size=lblSizeConst, textalign=text.align_left, tooltip=array.join(gTips, "\n")))
+                        else
+                            // Outside the spotlight: a small dot, hover it for the details
+                            array.push(lvLabels, label.new(bar_index, rawMid, "•", style=label.style_label_left, color=color.new(color.black, 100), textcolor=color.new(gSize > 1 ? zoneCol : gCol, 40), size=size.small, textalign=text.align_left, tooltip=array.join(gTips, "\n")))
+                    // The 0.618/0.65 pocket has its own gold shading, so skip the zone box
+                    if showZoneBoxes and gSize > 1 and not gOnlyPocket
+                        // Zones that price has already broken through fade further
+                        pad = math.max((gHi - gLo) * 0.15, confTol * 0.15)
+                        array.push(lvBoxes, box.new(gLeft, gHi + pad, bar_index, gLo - pad, border_color=color.new(zoneCol, gAllBroken ? 85 : 70), bgcolor=color.new(zoneCol, gAllBroken ? 96 : 92)))
+                    gStart := k
+
+// =============================================================================
+// SECTION 8: STRAT CANDLE CLASSIFICATION & PATTERN DETECTION
+// =============================================================================
+isInside  = high <= high[1] and low >= low[1]
+isOutside = high > high[1] and low < low[1]
+is2u      = high > high[1] and low >= low[1]  and not isOutside
+is2d      = low  < low[1]  and high <= high[1] and not isOutside
+
+p212_bull = use212Rev and is2d[2] and isInside[1] and is2u
+p212_bear = use212Rev and is2u[2] and isInside[1] and is2d
+p22_bull_rev = use22Rev and is2d[1] and is2u
+p22_bear_rev = use22Rev and is2u[1] and is2d
+p22_bull_cont = use22Cont and is2u[1] and is2u
+p22_bear_cont = use22Cont and is2d[1] and is2d
+p32_bull = use32Rev and isOutside[1] and is2u and close[1] < open[1]
+p32_bear = use32Rev and isOutside[1] and is2d and close[1] > open[1]
+
+var int chain2u = 0
+var int chain2d = 0
+chain2uPrev = chain2u
+chain2dPrev = chain2d
+if is2u
+    chain2u := chain2uPrev + 1
+    chain2d := 0
+else if is2d
+    chain2d := chain2dPrev + 1
+    chain2u := 0
+else
+    chain2u := 0
+    chain2d := 0
+
+pPMG_bull = usePMG and is2u and chain2dPrev >= pmgChainMin
+pPMG_bear = usePMG and is2d and chain2uPrev >= pmgChainMin
+
+p322_bull = useAdvanced and isOutside[2] and is2d[1] and is2u
+p322_bear = useAdvanced and isOutside[2] and is2u[1] and is2d
+p312_bull = useAdvanced and isOutside[2] and isInside[1] and is2u and close[2] < open[2]
+p312_bear = useAdvanced and isOutside[2] and isInside[1] and is2d and close[2] > open[2]
+p122_bull = useAdvanced and isInside[2] and is2d[1] and is2u
+p122_bear = useAdvanced and isInside[2] and is2u[1] and is2d
+p1bar_bull = useAdvanced and isOutside and close > open and close > high[1]
+p1bar_bear = useAdvanced and isOutside and close < open and close < low[1]
+p222_bull = useAdvanced and is2u[2] and is2d[1] and is2u
+p222_bear = useAdvanced and is2d[2] and is2u[1] and is2d
+
+longSignal  = p212_bull or p22_bull_rev or p22_bull_cont or p32_bull or pPMG_bull or p322_bull or p312_bull or p122_bull or p1bar_bull or p222_bull
+shortSignal = p212_bear or p22_bear_rev or p22_bear_cont or p32_bear or pPMG_bear or p322_bear or p312_bear or p122_bear or p1bar_bear or p222_bear
+
+patternLong  = p212_bull ? "2-1-2" : p22_bull_rev ? "2-2" : p22_bull_cont ? "2u-2u" : p32_bull ? "3-2" : pPMG_bull ? "PMG" : p322_bull ? "3-2-2" : p312_bull ? "3-1-2" : p122_bull ? "1-2-2" : p1bar_bull ? "1-Bar" : p222_bull ? "2-2-2" : ""
+patternShort = p212_bear ? "2-1-2" : p22_bear_rev ? "2-2" : p22_bear_cont ? "2d-2d" : p32_bear ? "3-2" : pPMG_bear ? "PMG" : p322_bear ? "3-2-2" : p312_bear ? "3-1-2" : p122_bear ? "1-2-2" : p1bar_bear ? "1-Bar" : p222_bear ? "2-2-2" : ""
+
+// =============================================================================
+// SECTION 9: SWING DETECTION
+// =============================================================================
+phPrice = ta.pivothigh(high, swingLeft, swingRight)
+plPrice = ta.pivotlow (low,  swingLeft, swingRight)
+
+// location.absolute plots at the series VALUE, so pass the pivot price (or na),
+// never a bool — a bool becomes 0/1 and paints a dot at $0 on every bar.
+swingActive = showSwings and not maOnlyMode and ppActive
+plotshape(swingActive ? phPrice : na, title="Swing High", location=location.absolute, style=shape.circle, color=color.new(color.red, 30), size=size.tiny, offset=-swingRight)
+plotshape(swingActive ? plPrice : na, title="Swing Low",  location=location.absolute, style=shape.circle, color=color.new(color.green, 30), size=size.tiny, offset=-swingRight)
+
+var array<float> swingHighs    = array.new<float>()
+var array<int>   swingHighBars = array.new<int>()
+var array<float> swingLows     = array.new<float>()
+var array<int>   swingLowBars  = array.new<int>()
+
+if not na(phPrice)
+    array.push(swingHighs, phPrice)
+    array.push(swingHighBars, bar_index - swingRight)
+    if array.size(swingHighs) > 50
+        array.shift(swingHighs)
+        array.shift(swingHighBars)
+
+if not na(plPrice)
+    array.push(swingLows, plPrice)
+    array.push(swingLowBars, bar_index - swingRight)
+    if array.size(swingLows) > 50
+        array.shift(swingLows)
+        array.shift(swingLowBars)
+
+// =============================================================================
+// SECTION 10: TARGET CANDIDATE FINDERS
+// =============================================================================
+findNearestSwingHighAbove(float entryPrice) =>
+    float result = na
+    int n = array.size(swingHighs)
+    if n > 0
+        for i = 0 to n - 1
+            sh = array.get(swingHighs, i)
+            sb = array.get(swingHighBars, i)
+            if sh > entryPrice and (bar_index - sb) <= swingLookback
+                if na(result) or sh < result
+                    result := sh
+    result
+
+findNearestSwingLowBelow(float entryPrice) =>
+    float result = na
+    int n = array.size(swingLows)
+    if n > 0
+        for i = 0 to n - 1
+            sl = array.get(swingLows, i)
+            sb = array.get(swingLowBars, i)
+            if sl < entryPrice and (bar_index - sb) <= swingLookback
+                if na(result) or sl > result
+                    result := sl
+    result
+
+findNearestMAAbove(float entryPrice) =>
+    float result = na
+    mas = array.from(sma20D, sma50D, sma200D, sma50W, sma200W)
+    for i = 0 to array.size(mas) - 1
+        m = array.get(mas, i)
+        if not na(m) and m > entryPrice
+            if na(result) or m < result
+                result := m
+    result
+
+findNearestMABelow(float entryPrice) =>
+    float result = na
+    mas = array.from(sma20D, sma50D, sma200D, sma50W, sma200W)
+    for i = 0 to array.size(mas) - 1
+        m = array.get(mas, i)
+        if not na(m) and m < entryPrice
+            if na(result) or m > result
+                result := m
+    result
+
+findNearestPPAbove(float entryPrice) =>
+    float result = na
+    pps = array.from(prevDailyHigh, prevDailyLow, prevWeeklyHigh, prevWeeklyLow,
+                     prevMonthlyHigh, prevMonthlyLow, prevQuarterlyHigh, prevQuarterlyLow,
+                     pmHigh, pmLow, orHigh, orLow,
+                     gapLevel,
+                     adrHigh, adrLow, awrHigh, awrLow)
+    for i = 0 to array.size(pps) - 1
+        p = array.get(pps, i)
+        if not na(p) and p > entryPrice
+            if na(result) or p < result
+                result := p
+    result
+
+findNearestPPBelow(float entryPrice) =>
+    float result = na
+    pps = array.from(prevDailyHigh, prevDailyLow, prevWeeklyHigh, prevWeeklyLow,
+                     prevMonthlyHigh, prevMonthlyLow, prevQuarterlyHigh, prevQuarterlyLow,
+                     pmHigh, pmLow, orHigh, orLow,
+                     gapLevel,
+                     adrHigh, adrLow, awrHigh, awrLow)
+    for i = 0 to array.size(pps) - 1
+        p = array.get(pps, i)
+        if not na(p) and p < entryPrice
+            if na(result) or p > result
+                result := p
+    result
+
+nearestAbove(float a, float b, float c) =>
+    float result = na
+    if not na(a)
+        result := a
+    if not na(b)
+        result := na(result) ? b : math.min(result, b)
+    if not na(c)
+        result := na(result) ? c : math.min(result, c)
+    result
+
+nearestBelow(float a, float b, float c) =>
+    float result = na
+    if not na(a)
+        result := a
+    if not na(b)
+        result := na(result) ? b : math.max(result, b)
+    if not na(c)
+        result := na(result) ? c : math.max(result, c)
+    result
+
+// =============================================================================
+// SECTION 11: FILTERS & ENTRY/STOP/TARGET (visual only - no orders)
+// =============================================================================
+inSession = not useTimeFilter or not na(time(timeframe.period, sess))
+ema50f = ta.ema(close, 50)
+trendOkLng = (not useTrend or close > ema50f) and (not useMATrendFilter or close > sma200D)
+trendOkShr = (not useTrend or close < ema50f) and (not useMATrendFilter or close < sma200D)
+
+// Direction of each timeframe's CURRENT candle = chart close vs that candle's
+// open. The open is known from the start of the period, so history matches
+// real time (the higher timeframe's close with lookahead leaked the period's
+// final close into older bars).
+dirF(float o) =>
+    close > o ? 1 : close < o ? -1 : 0
+
+dir15m = dirF(o15m_f)
+dir1h  = dirF(o1h_f)
+dir4h  = dirF(o4h_f)
+dirD   = dirF(todayOpenD)
+dirW   = dirF(weeklyOpen)
+dirM   = dirF(oM_f)
+dirQ   = dirF(oQ_f)
+dirY   = dirF(oY_f)
+
+// With no timeframe selected, neither side counts as aligned
+mtfcAnyTf = mtfcUse15m or mtfcUse1h or mtfcUse4h or mtfcUseD or mtfcUseW or mtfcUseM or mtfcUseQ or mtfcUseY
+allBull = mtfcAnyTf and (not mtfcUse15m or dir15m == 1) and (not mtfcUse1h or dir1h == 1) and (not mtfcUse4h or dir4h == 1) and (not mtfcUseD or dirD == 1) and (not mtfcUseW or dirW == 1) and (not mtfcUseM or dirM == 1) and (not mtfcUseQ or dirQ == 1) and (not mtfcUseY or dirY == 1)
+allBear = mtfcAnyTf and (not mtfcUse15m or dir15m == -1) and (not mtfcUse1h or dir1h == -1) and (not mtfcUse4h or dir4h == -1) and (not mtfcUseD or dirD == -1) and (not mtfcUseW or dirW == -1) and (not mtfcUseM or dirM == -1) and (not mtfcUseQ or dirQ == -1) and (not mtfcUseY or dirY == -1)
+
+ftfcOkLng = not useFTFCFilter or allBull
+ftfcOkShr = not useFTFCFilter or allBear
+
+canLong  = longSignal  and inSession and trendOkLng and ftfcOkLng and not maOnlyMode
+canShort = shortSignal and inSession and trendOkShr and ftfcOkShr and not maOnlyMode
+
+bodyHigh   = math.max(open, close)
+bodyLow    = math.min(open, close)
+atrValue   = ta.atr(atrLen)
+longEntry  = useBodyEntries ? bodyHigh : high
+shortEntry = useBodyEntries ? bodyLow  : low
+longStop   = stopMode == "ATR" ? longEntry  - atrValue * atrMult : useBodyEntries ? bodyLow  : low
+shortStop  = stopMode == "ATR" ? shortEntry + atrValue * atrMult : useBodyEntries ? bodyHigh : high
+// ATR in the Data Window so the stop distance can be read off the chart
+plot(atrValue, "ATR", color=color.gray, display=display.data_window)
+
+calcLongTarget() =>
+    float tgt = na
+    if targetMode == "Reward:Risk Ratio"
+        tgt := longEntry + (longEntry - longStop) * rrRatio
+    else
+        swingT = (targetMode == "All Magnets (Strat)" or targetMode == "Swing Only") ? findNearestSwingHighAbove(longEntry) : na
+        maT    = (targetMode == "All Magnets (Strat)" or targetMode == "MA Only") and useMAsAsTargets ? findNearestMAAbove(longEntry) : na
+        ppT    = (targetMode == "All Magnets (Strat)" or targetMode == "NDTL Gains Only") and usePPAsTargets ? findNearestPPAbove(longEntry) : na
+        tgt := nearestAbove(swingT, maT, ppT)
+        if na(tgt)
+            tgt := longEntry + (longEntry - longStop) * fallbackRR
+    tgt
+
+calcShortTarget() =>
+    float tgt = na
+    if targetMode == "Reward:Risk Ratio"
+        tgt := shortEntry - (shortStop - shortEntry) * rrRatio
+    else
+        swingT = (targetMode == "All Magnets (Strat)" or targetMode == "Swing Only") ? findNearestSwingLowBelow(shortEntry) : na
+        maT    = (targetMode == "All Magnets (Strat)" or targetMode == "MA Only") and useMAsAsTargets ? findNearestMABelow(shortEntry) : na
+        ppT    = (targetMode == "All Magnets (Strat)" or targetMode == "NDTL Gains Only") and usePPAsTargets ? findNearestPPBelow(shortEntry) : na
+        tgt := nearestBelow(swingT, maT, ppT)
+        if na(tgt)
+            tgt := shortEntry - (shortStop - shortEntry) * fallbackRR
+    tgt
+
+// Speed: the magnet search loops only run on bars that actually signal
+longTarget  = canLong  ? calcLongTarget()  : na
+shortTarget = canShort ? calcShortTarget() : na
+
+// ---- v2: signal grade (A/B/C) ----
+// One point each for: MTFC agrees, the entry is at an NDTL level, and the
+// target is at least gradeMinRR times the risk. 3 = A, 2 = B, else C.
+f_minLevelDist(float price) =>
+    float best = na
+    pps = array.from(prevDailyHigh, prevDailyLow, prevWeeklyHigh, prevWeeklyLow, prevMonthlyHigh, prevMonthlyLow, prevQuarterlyHigh, prevQuarterlyLow, pmHigh, pmLow, orHigh, orLow, adrHigh, adrLow, awrHigh, awrLow)
+    for i = 0 to array.size(pps) - 1
+        p = array.get(pps, i)
+        if not na(p)
+            d = math.abs(price - p)
+            best := na(best) ? d : math.min(best, d)
+    best
+
+f_gradeScore(bool mtfcOk, float entry, float stp, float tgt) =>
+    adrV  = na(dailyADRSmooth) or dailyADRSmooth <= 0 ? close * 0.01 : dailyADRSmooth
+    dist  = f_minLevelDist(entry)
+    atLvl = not na(dist) and dist <= gradeNearAdr * adrV
+    risk  = math.abs(entry - stp)
+    rr    = risk > 0 and not na(tgt) ? math.abs(tgt - entry) / risk : 0.0
+    (mtfcOk ? 1 : 0) + (atLvl ? 1 : 0) + (rr >= gradeMinRR ? 1 : 0)
+
+gradeL = canLong  ? f_gradeScore(allBull, longEntry,  longStop,  longTarget)  : 0
+gradeS = canShort ? f_gradeScore(allBear, shortEntry, shortStop, shortTarget) : 0
+f_gradeTxt(int g) =>
+    g >= 3 ? "A" : g == 2 ? "B" : "C"
+
+// =============================================================================
+// SECTION 12: STRAT VISUALS
+// Entry/Stop/Target lines are gated by displayMode (default "Off") and the
+// individual showEntryLine / showStopLine / showTargetLine toggles.
+// =============================================================================
+plotshape(canLong,  title="Long Signal",  location=location.belowbar, style=shape.triangleup,   color=color.new(color.green, 0), size=size.tiny, display=showArrows ? display.all : display.none)
+plotshape(canShort, title="Short Signal", location=location.abovebar, style=shape.triangledown, color=color.new(color.red,   0), size=size.tiny, display=showArrows ? display.all : display.none)
+
+if (showPatternTag or showGrade) and canLong
+    txtL = (showPatternTag ? patternLong : "") + (showGrade ? (showPatternTag ? " · " : "") + f_gradeTxt(gradeL) : "")
+    label.new(bar_index, low, txtL, style=label.style_label_up, yloc=yloc.belowbar, size=size.tiny,
+         color=gradeL >= 3 ? color.new(#26a69a, 20) : color.new(#2a2e39, 0), textcolor=gradeL >= 3 ? #0b2b27 : #26a69a)
+if (showPatternTag or showGrade) and canShort
+    txtS = (showPatternTag ? patternShort : "") + (showGrade ? (showPatternTag ? " · " : "") + f_gradeTxt(gradeS) : "")
+    label.new(bar_index, high, txtS, style=label.style_label_down, yloc=yloc.abovebar, size=size.tiny,
+         color=gradeS >= 3 ? color.new(#ef5350, 20) : color.new(#2a2e39, 0), textcolor=gradeS >= 3 ? #3b0f0e : #ef5350)
+
+var line  lnEntry  = na
+var line  lnStop   = na
+var line  lnTarget = na
+var label lbEntry  = na
+var label lbStop   = na
+var label lbTarget = na
+var int   sigBar   = na
+var float sigEntry = na
+var float sigStop  = na
+var float sigTgt   = na
+
+// Forget yesterday's signal so it is not redrawn at today's open
+if isNewDay
+    sigBar := na
+
+if (canLong or canShort) and displayMode == "Latest Only"
+    line.delete(lnEntry)
+    line.delete(lnStop)
+    line.delete(lnTarget)
+    label.delete(lbEntry)
+    label.delete(lbStop)
+    label.delete(lbTarget)
+    sigBar   := bar_index
+    sigEntry := canLong ? longEntry  : shortEntry
+    sigStop  := canLong ? longStop   : shortStop
+    sigTgt   := canLong ? longTarget : shortTarget
+
+if displayMode == "Latest Only" and not na(sigBar) and inRTH
+    line.delete(lnEntry)
+    line.delete(lnStop)
+    line.delete(lnTarget)
+    label.delete(lbEntry)
+    label.delete(lbStop)
+    label.delete(lbTarget)
+    rightX = bar_index + 3
+    if showEntryLine
+        lnEntry  := line.new(sigBar, sigEntry, rightX, sigEntry,  color=color.blue,  width=2, style=line.style_solid)
+        lbEntry  := label.new(rightX, sigEntry, " E "  + str.tostring(sigEntry, format.mintick), color=color.blue,  textcolor=color.white, style=label.style_label_left, size=size.small)
+    if showStopLine
+        lnStop   := line.new(sigBar, sigStop,  rightX, sigStop,   color=color.red,   width=2, style=line.style_dashed)
+        lbStop   := label.new(rightX, sigStop,  " S "   + str.tostring(sigStop,  format.mintick), color=color.red,   textcolor=color.white, style=label.style_label_left, size=size.small)
+    if showTargetLine
+        lnTarget := line.new(sigBar, sigTgt,   rightX, sigTgt,    color=color.green, width=2, style=line.style_dashed)
+        lbTarget := label.new(rightX, sigTgt,   " T " + str.tostring(sigTgt,   format.mintick), color=color.green, textcolor=color.white, style=label.style_label_left, size=size.small)
+
+if displayMode == "Latest Only" and not inRTH
+    line.delete(lnEntry)
+    line.delete(lnStop)
+    line.delete(lnTarget)
+    label.delete(lbEntry)
+    label.delete(lbStop)
+    label.delete(lbTarget)
+    lnEntry  := na
+    lnStop   := na
+    lnTarget := na
+    lbEntry  := na
+    lbStop   := na
+    lbTarget := na
+
+if displayMode == "All Signals" and canLong and inRTH
+    if showEntryLine
+        line.new(bar_index, longEntry,  bar_index + 3, longEntry,  color=color.blue,  width=1, style=line.style_solid)
+    if showStopLine
+        line.new(bar_index, longStop,   bar_index + 3, longStop,   color=color.red,   width=1, style=line.style_dashed)
+    if showTargetLine
+        line.new(bar_index, longTarget, bar_index + 3, longTarget, color=color.green, width=1, style=line.style_dashed)
+if displayMode == "All Signals" and canShort and inRTH
+    if showEntryLine
+        line.new(bar_index, shortEntry,  bar_index + 3, shortEntry,  color=color.blue,  width=1, style=line.style_solid)
+    if showStopLine
+        line.new(bar_index, shortStop,   bar_index + 3, shortStop,   color=color.red,   width=1, style=line.style_dashed)
+    if showTargetLine
+        line.new(bar_index, shortTarget, bar_index + 3, shortTarget, color=color.green, width=1, style=line.style_dashed)
+
+// v2: candle numbers use the strict Strat definition (equal highs/lows = 1);
+// 3s get a small red chip so expansion bars stand out.
+chartType = f_stratType(high, low, high[1], low[1])
+if showCandleTag and not maOnlyMode
+    label.new(bar_index, low, chartType, yloc=yloc.belowbar, size=size.tiny,
+         style=chartType == "3" ? label.style_label_up : label.style_none,
+         color=chartType == "3" ? color.new(#ef5350, 70) : color.new(color.black, 100),
+         textcolor=chartType == "1" ? #f0b13a : chartType == "3" ? #ef5350 : color.gray)
+
+// ---- v2: Strat setups in waiting ----
+// Uses the last CLOSED bar to draw the price that would trigger the next
+// entry: a 1 or 3 can break either way; a 2d sets up a 2u reversal above its
+// high; a 2u sets up a 2d reversal below its low. Sides that fight MTFC fade.
+var array<line>  suLines  = array.new<line>()
+var array<label> suLabels = array.new<label>()
+if barstate.islast
+    while array.size(suLines) > 0
+        line.delete(array.pop(suLines))
+    while array.size(suLabels) > 0
+        label.delete(array.pop(suLabels))
+    if showSetups and not maOnlyMode
+        t1 = chartType[1]
+        t2 = chartType[2]
+        longTrig  = t1 == "1" or t1 == "3" or t1 == "2d" ? high[1] : na
+        shortTrig = t1 == "1" or t1 == "3" or t1 == "2u" ? low[1]  : na
+        setupName = t1 == "1" ? t2 + "-1" : t1 == "3" ? "3" : t1 == "2d" ? "2d → 2u" : t1 == "2u" ? "2u → 2d" : ""
+        if not na(longTrig)
+            hit   = high > longTrig
+            fight = allBear
+            colL  = color.new(#26a69a, fight ? 60 : 0)
+            array.push(suLines, line.new(bar_index - 6, longTrig, bar_index, longTrig, color=colL, style=line.style_dashed))
+            array.push(suLabels, label.new(bar_index - 3, longTrig, (hit ? "✓ ▲ " : "▲ ") + str.tostring(longTrig, format.mintick),
+                 style=label.style_label_down, color=color.new(color.black, 100), textcolor=colL, size=size.small,
+                 tooltip=(hit ? "Triggered: " : "Long above ") + str.tostring(longTrig, format.mintick) + " (" + setupName + ")" + (fight ? " — against MTFC" : "")))
+        if not na(shortTrig)
+            hit   = low < shortTrig
+            fight = allBull
+            colS  = color.new(#ef5350, fight ? 60 : 0)
+            array.push(suLines, line.new(bar_index - 6, shortTrig, bar_index, shortTrig, color=colS, style=line.style_dashed))
+            array.push(suLabels, label.new(bar_index - 3, shortTrig, (hit ? "✓ ▼ " : "▼ ") + str.tostring(shortTrig, format.mintick),
+                 style=label.style_label_up, color=color.new(color.black, 100), textcolor=colS, size=size.small,
+                 tooltip=(hit ? "Triggered: " : "Short below ") + str.tostring(shortTrig, format.mintick) + " (" + setupName + ")" + (fight ? " — against MTFC" : "")))
+
+plot(useTrend and not maOnlyMode ? ema50f : na, "50 EMA Filter", color=color.orange, linewidth=1)
+
+// =============================================================================
+// SECTION 13: MTFC DASHBOARD + ALERTS
+// =============================================================================
+// v2: candle colors follow MTFC
+mtfcBarOn  = colorBarsMTFC and not maOnlyMode and (allBull or allBear)
+mtfcBarCol = allBull ? #26a69a : #ef5350
+barcolor(mtfcBarOn and mtfcBarStyle == "Whole candle" ? mtfcBarCol : na, title="MTFC candle color")
+// Outline mode: draw a see-through candle on top, coloring only its border and wick
+mtfcOutline = mtfcBarOn and mtfcBarStyle == "Outline"
+plotcandle(mtfcOutline ? open : na, mtfcOutline ? high : na, mtfcOutline ? low : na, mtfcOutline ? close : na,
+     title="MTFC candle outline", color=color.new(color.black, 100), wickcolor=mtfcBarCol, bordercolor=mtfcBarCol, editable=false)
+
+canLongFTFC  = canLong  and (not useFTFCFilter or allBull)
+canShortFTFC = canShort and (not useFTFCFilter or allBear)
+
+ftfcBullEvent = allBull and not allBull[1]
+ftfcBearEvent = allBear and not allBear[1]
+
+mtfcSizeConst = mtfcTextSize == "Tiny" ? size.tiny : mtfcTextSize == "Small" ? size.small : mtfcTextSize == "Normal" ? size.normal : size.large
+
+mtfcPosConst = mtfcPosition == "top_right" ? position.top_right : mtfcPosition == "top_center" ? position.top_center : mtfcPosition == "top_left" ? position.top_left : mtfcPosition == "bottom_right" ? position.bottom_right : mtfcPosition == "bottom_center" ? position.bottom_center : mtfcPosition == "bottom_left" ? position.bottom_left : mtfcPosition == "middle_right" ? position.middle_right : position.middle_left
+
+// ---- MTFC dashboard (score-bar style) --------------------------------------
+//   Row 0: summary like "3/4 ▲", merged across all columns
+//   Row 1: one colored bar per timeframe (green up, red down, gray flat)
+//   Row 2: timeframe labels under each bar
+// Colors are TradingView's muted chart palette so it doesn't fight price.
+mtfcUpCol   = #26a69a
+mtfcDnCol   = #ef5350
+mtfcFlatCol = #787b86
+mtfcTextCol = #b2b5be
+
+var table mtfcTable = table.new(position.top_right, 1, 1)
+
+f_dirBarColor(int d) =>
+    d == 1 ? mtfcUpCol : d == -1 ? mtfcDnCol : mtfcFlatCol
+
+f_usedCol(float pct) =>
+    pct >= 1.0 ? mtfcDnCol : pct >= 0.7 ? #f0b13a : mtfcTextCol
+
+if showMTFC and barstate.islast
+    // Collect the enabled timeframes in display order, with direction and
+    // Strat candle type for each
+    tfNames = array.new<string>()
+    tfDirs  = array.new<int>()
+    tfTypes = array.new<string>()
+    if mtfcUse15m
+        array.push(tfNames, "15m")
+        array.push(tfDirs, dir15m)
+        array.push(tfTypes, f_stratType(h15m_f, l15m_f, ph15m_f, pl15m_f))
+    if mtfcUse1h
+        array.push(tfNames, "1h")
+        array.push(tfDirs, dir1h)
+        array.push(tfTypes, f_stratType(h1h_f, l1h_f, ph1h_f, pl1h_f))
+    if mtfcUse4h
+        array.push(tfNames, "4h")
+        array.push(tfDirs, dir4h)
+        array.push(tfTypes, f_stratType(h4h_f, l4h_f, ph4h_f, pl4h_f))
+    if mtfcUseD
+        array.push(tfNames, "D")
+        array.push(tfDirs, dirD)
+        array.push(tfTypes, f_stratType(hD_f, lD_f, prevDailyHigh, prevDailyLow))
+    if mtfcUseW
+        array.push(tfNames, "W")
+        array.push(tfDirs, dirW)
+        array.push(tfTypes, f_stratType(hW_f, lW_f, prevWeeklyHigh, prevWeeklyLow))
+    if mtfcUseM
+        array.push(tfNames, "M")
+        array.push(tfDirs, dirM)
+        array.push(tfTypes, f_stratType(hM_f, lM_f, prevMonthlyHigh, prevMonthlyLow))
+    if mtfcUseQ
+        array.push(tfNames, "Q")
+        array.push(tfDirs, dirQ)
+        array.push(tfTypes, f_stratType(hQ_f, lQ_f, prevQuarterlyHigh, prevQuarterlyLow))
+    if mtfcUseY
+        array.push(tfNames, "Y")
+        array.push(tfDirs, dirY)
+        array.push(tfTypes, f_stratType(hY_f, lY_f, phY_f, plY_f))
+
+    nTf = array.size(tfNames)
+    table.delete(mtfcTable)
+    if nTf > 0
+        nUp = 0
+        nDn = 0
+        for i = 0 to nTf - 1
+            d = array.get(tfDirs, i)
+            nUp += d == 1 ? 1 : 0
+            nDn += d == -1 ? 1 : 0
+
+        // Summary: full alignment, or the majority side with its count
+        string sumTxt = ""
+        color  sumCol = mtfcFlatCol
+        if nUp == nTf
+            sumTxt := str.tostring(nUp) + "/" + str.tostring(nTf) + " ▲"
+            sumCol := mtfcUpCol
+        else if nDn == nTf
+            sumTxt := str.tostring(nDn) + "/" + str.tostring(nTf) + " ▼"
+            sumCol := mtfcDnCol
+        else if nUp > nDn
+            sumTxt := str.tostring(nUp) + "/" + str.tostring(nTf) + " ▲"
+            sumCol := mtfcUpCol
+        else if nDn > nUp
+            sumTxt := str.tostring(nDn) + "/" + str.tostring(nTf) + " ▼"
+            sumCol := mtfcDnCol
+        else
+            sumTxt := str.tostring(nUp) + "/" + str.tostring(nDn) + " –"
+
+        extras = showPanelExtras and not maOnlyMode
+        nRows  = extras ? 7 : 3
+        mtfcTable := table.new(mtfcPosConst, nTf, nRows,
+             bgcolor=color.new(#131722, 15),
+             frame_color=color.new(#2a2e39, 0), frame_width=1,
+             border_color=color.new(#131722, 15), border_width=2)
+
+        // Row 0: summary
+        table.cell(mtfcTable, 0, 0, sumTxt, text_color=sumCol, text_size=mtfcSizeConst)
+        if nTf > 1
+            table.merge_cells(mtfcTable, 0, 0, nTf - 1, 0)
+
+        // Rows 1-2: a colored bar per timeframe showing its Strat candle type,
+        // with the timeframe name underneath
+        for i = 0 to nTf - 1
+            d = array.get(tfDirs, i)
+            table.cell(mtfcTable, i, 1, showTfTypes ? array.get(tfTypes, i) : "   ", text_color=#131722, text_size=showTfTypes ? mtfcSizeConst : size.tiny, bgcolor=f_dirBarColor(d))
+            table.cell(mtfcTable, i, 2, array.get(tfNames, i), text_color=mtfcTextCol, text_size=mtfcSizeConst)
+
+        // Rows 3-6: ADR / AWR used and the nearest levels
+        if extras
+            adrUsed = na(dailyADRSmooth) or dailyADRSmooth <= 0 ? na : (hD_f - lD_f) / dailyADRSmooth
+            awrUsed = na(weeklyAWRSmooth) or weeklyAWRSmooth <= 0 ? na : (hW_f - lW_f) / weeklyAWRSmooth
+            adrTxt  = na(adrUsed) ? "ADR –" : "ADR " + str.tostring(math.round(adrUsed * 100)) + "%"
+            awrTxt  = na(awrUsed) ? "AWR –" : "AWR " + str.tostring(math.round(awrUsed * 100)) + "%"
+            upTxt   = na(nextUpP) ? "▲ –" : "▲ " + nextUpCode + " +" + str.tostring(nextUpP - close, format.mintick)
+            dnTxt   = na(nextDnP) ? "▼ –" : "▼ " + nextDnCode + " −" + str.tostring(close - nextDnP, format.mintick)
+            table.cell(mtfcTable, 0, 3, adrTxt, text_color=na(adrUsed) ? mtfcFlatCol : f_usedCol(adrUsed), text_size=mtfcSizeConst)
+            table.cell(mtfcTable, 0, 4, awrTxt, text_color=na(awrUsed) ? mtfcFlatCol : f_usedCol(awrUsed), text_size=mtfcSizeConst)
+            table.cell(mtfcTable, 0, 5, upTxt,  text_color=mtfcUpCol, text_size=mtfcSizeConst)
+            table.cell(mtfcTable, 0, 6, dnTxt,  text_color=mtfcDnCol, text_size=mtfcSizeConst)
+            if nTf > 1
+                for r = 3 to 6
+                    table.merge_cells(mtfcTable, 0, r, nTf - 1, r)
+
+
+// =============================================================================
+// SECTION 14: ALERTS
+// =============================================================================
+alertcondition(canLong,  "Strat Long Signal",  "STRAT LONG: {{ticker}} | Break above signal high")
+alertcondition(canShort, "Strat Short Signal", "STRAT SHORT: {{ticker}} | Break below signal low")
+alertcondition(canLongFTFC,  "Strat Long + MTFC",  "STRAT LONG with full MTFC alignment: {{ticker}}")
+alertcondition(canShortFTFC, "Strat Short + MTFC", "STRAT SHORT with full MTFC alignment: {{ticker}}")
+alertcondition(ftfcAlerts and ftfcBullEvent, "MTFC Bullish Aligned", "MTFC: All enabled timeframes are now BULLISH on {{ticker}}")
+alertcondition(ftfcAlerts and ftfcBearEvent, "MTFC Bearish Aligned", "MTFC: All enabled timeframes are now BEARISH on {{ticker}}")
+alertcondition(canLong  and gradeL >= 3, "Strat Long A-grade",  "A-GRADE STRAT LONG: {{ticker}} | MTFC aligned, at an NDTL level, room to target")
+alertcondition(canShort and gradeS >= 3, "Strat Short A-grade", "A-GRADE STRAT SHORT: {{ticker}} | MTFC aligned, at an NDTL level, room to target")

@@ -1,0 +1,41 @@
+Wallpaper credits (all from Wikimedia Commons, CC0 or public domain)
+
+wp_1.jpg  Lake-sherburne-964855.jpg
+  Source: https://commons.wikimedia.org/wiki/File:Lake-sherburne-964855.jpg
+  Author: GlacierNPS
+  License: Public domain
+
+wp_2.jpg  Moraine Lake 17092005.jpg
+  Source: https://commons.wikimedia.org/wiki/File:Moraine_Lake_17092005.jpg
+  Author: Gorgo
+  License: Public domain
+
+wp_3.jpg  Parc de la Chute-Montmorency 001.jpg
+  Source: https://commons.wikimedia.org/wiki/File:Parc_de_la_Chute-Montmorency_001.jpg
+  Author: Wilfredor
+  License: CC0
+
+wp_4.jpg  Spruce forest at Holma.jpg
+  Source: https://commons.wikimedia.org/wiki/File:Spruce_forest_at_Holma.jpg
+  Author: W.carter
+  License: CC0
+
+wp_5.jpg  Komos site baie Crète.jpg
+  Source: https://commons.wikimedia.org/wiki/File:Komos_site_baie_Cr%C3%A8te.jpg
+  Author: Jebulon
+  License: CC0
+
+wp_6.jpg  Yosemite by Carol M. Highsmith.jpg
+  Source: https://commons.wikimedia.org/wiki/File:Yosemite_by_Carol_M._Highsmith.jpg
+  Author: Carol M. Highsmith
+  License: Public domain
+
+wp_7.jpg  Oolah Valley (16089307144).jpg
+  Source: https://commons.wikimedia.org/wiki/File:Oolah_Valley_(16089307144).jpg
+  Author: National Park Service, Alaska Region
+  License: Public domain
+
+wp_8.jpg  Juan Griego Sunset.jpg
+  Source: https://commons.wikimedia.org/wiki/File:Juan_Griego_Sunset.jpg
+  Author: Wilfredor
+  License: CC0

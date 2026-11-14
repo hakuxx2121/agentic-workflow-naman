@@ -1,0 +1,21 @@
+# Terraform state & caches (state can contain secrets - never commit it)
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfplan
+tfplan
+# Variable files often hold account-specific values
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+# Local kubeconfigs / misc
+kubeconfig*
+.DS_Store

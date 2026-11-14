@@ -1,0 +1,15 @@
+# Local, free tier. Run ../scripts/make-pki.sh first.
+#   docker compose up -d --build   then   ../tests/run-tests.sh local
+services:
+  backend:
+    build: ./backend
+    environment:
+      IDENTITY_FIELD: ${IDENTITY_FIELD:-subject}   # subject | serial | dn | upn
+    # no "ports:" on purpose: only nginx can reach it (like a private target group)
+  mtls-proxy:
+    image: nginx:1.27-alpine
+    depends_on: [backend]
+    ports: ["8443:8443"]
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../pki:/pki:ro

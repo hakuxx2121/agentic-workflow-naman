@@ -1,0 +1,26 @@
+{
+  "generated_at": null,
+  "sample": true,
+  "assumptions": [
+    "Directional calls are bullish or bearish mentions; mixed and neutral are not scored for hit rate.",
+    "Returns start at the next trading day's open after the video date (upload time is unknown); same-day moves are excluded.",
+    "1d is the close of the entry session vs that open; 5d is the close of the 5th session starting at entry vs that open.",
+    "A bullish call hits when the forward return is > 0; a bearish call hits when it is < 0.",
+    "SPY-adjusted hits use the same rule on (ticker return minus SPY return) over the same dates.",
+    "Calls without enough future bars are pending, not misses.",
+    "The prior-day move used for 'chasing' is the last completed session on or before the video date.",
+    "SMA-50 uses the 50 closes ending on the last session on or before the video date.",
+    "SMA-20 uses the 20 closes ending on the same session as SMA-50 (last session on or before the video date).",
+    "'To date' is the latest close in prices.json vs the entry open; vs SPY subtracts SPY's move over the exact same dates (missing if SPY lacks either date).",
+    "Flip tags (ahead / after / no_follow_through / pending) follow scripts/flip_config.json; the settings used are stored in flip_config.",
+    "Per-creator, per-ticker splits (by_channel_ticker) use the same hit rules; under 10 scored calls is flagged thin.",
+    "Price-talk levels are parsed numbers near the then-current price; percents, years, multiples, and 'day/SMA' references are skipped."
+  ],
+  "disclaimer": "These are associations in a short sample. A low p-value is not proof, and nothing here is a cause-and-effect claim or a trading recommendation.",
+  "alpha": 0.05,
+  "n_min": 10,
+  "findings": [],
+  "n_findings": 0,
+  "n_significant": 0,
+  "note": "This sample ships with no precomputed insight cards (the original findings were computed on the full mention set). Run python3 scripts/analyze.py after you have mentions.json and scores.json."
+}

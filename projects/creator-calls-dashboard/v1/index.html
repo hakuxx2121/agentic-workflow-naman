@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ticker mentions</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23151822'/%3E%3Ccircle cx='8' cy='8' r='4' fill='%237aa2ff'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div>
+        <h1>Ticker mentions</h1>
+        <p class="sub">YouTube trading-channel mentions, scored against the next sessions. Data is fetched on load — no rebuild.</p>
+      </div>
+      <div id="stats" class="stats"></div>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button type="button" class="active" data-tab="mentions" role="tab" aria-selected="true">Mentions</button>
+      <button type="button" data-tab="scorecard" role="tab" aria-selected="false">Scorecard</button>
+      <button type="button" data-tab="flips" role="tab" aria-selected="false">Flips</button>
+      <button type="button" data-tab="reaction" role="tab" aria-selected="false">Reaction</button>
+      <button type="button" data-tab="insights" role="tab" aria-selected="false">Insights</button>
+    </nav>
+
+    <section class="filters" id="filters">
+      <label>From <input type="date" id="from"></label>
+      <label>To <input type="date" id="to"></label>
+      <label>Channel
+        <select id="channel"><option value="">All channels</option></select>
+      </label>
+      <label>Ticker
+        <select id="ticker"><option value="">All tickers</option></select>
+      </label>
+      <label>Sentiment
+        <select id="sentiment">
+          <option value="">Any sentiment</option>
+          <option value="bullish">Bullish</option>
+          <option value="bearish">Bearish</option>
+          <option value="mixed">Mixed</option>
+          <option value="neutral">Neutral</option>
+        </select>
+      </label>
+      <div class="btn-row">
+        <button type="button" class="btn" id="holdings" aria-pressed="false">My holdings</button>
+        <button type="button" class="btn" id="reset">Reset</button>
+      </div>
+    </section>
+
+    <p id="status" class="status" hidden></p>
+
+    <section id="tab-mentions" class="tab-panel active">
+      <div class="charts">
+        <article class="card">
+          <h2>Top tickers</h2>
+          <p class="caption" id="cap-tickers">Mention count, split by sentiment</p>
+          <div class="chart-box tall"><canvas id="chart-tickers"></canvas></div>
+        </article>
+        <article class="card">
+          <h2>Sentiment by channel</h2>
+          <p class="caption">Split of mentions on each channel</p>
+          <div class="chart-box tall"><canvas id="chart-channels"></canvas></div>
+        </article>
+        <article class="card wide">
+          <h2>Mentions over time</h2>
+          <p class="caption">Daily counts (uses the ticker filter above). Gaps are days with no mentions.</p>
+          <div class="chart-box"><canvas id="chart-time"></canvas></div>
+        </article>
+      </div>
+      <article class="card table-card">
+        <div class="table-head">
+          <h2>Mentions</h2>
+          <p class="caption" id="table-count"></p>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th data-sort="date">Date</th>
+                <th data-sort="channel">Channel</th>
+                <th data-sort="ticker">Ticker</th>
+                <th data-sort="sentiment">Sentiment</th>
+                <th data-sort="price_talk">Price talk</th>
+                <th data-sort="summary">Summary</th>
+                <th>Video</th>
+              </tr>
+            </thead>
+            <tbody id="mentions-body"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section id="tab-scorecard" class="tab-panel">
+      <div class="kpi" id="score-kpis"></div>
+      <div class="charts">
+        <article class="card wide">
+          <h2>Hit rate by channel</h2>
+          <p class="caption">Directional calls only. Returns start at the next session’s open after the video date.</p>
+          <div class="chart-box tall" style="height:320px"><canvas id="chart-score-channel"></canvas></div>
+        </article>
+      </div>
+      <article class="card table-card">
+        <div class="table-head">
+          <h2>Scored calls</h2>
+          <p class="caption" id="score-count"></p>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th data-sort-score="date">Date</th>
+                <th data-sort-score="channel">Channel</th>
+                <th data-sort-score="ticker">Ticker</th>
+                <th data-sort-score="sentiment">Sentiment</th>
+                <th data-sort-score="ret_1d">1d</th>
+                <th data-sort-score="ret_5d">5d</th>
+                <th data-sort-score="hit_5d">5d hit</th>
+                <th data-sort-score="ex_5d">5d vs SPY</th>
+                <th>Video</th>
+              </tr>
+            </thead>
+            <tbody id="score-body"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section id="tab-flips" class="tab-panel">
+      <p class="disclaimer">A flip is the same creator changing a ticker from bullish to bearish, or the other way. Hit rates use the same next-session rule as the scorecard.</p>
+      <div class="kpi" id="flip-kpis"></div>
+      <article class="card table-card">
+        <div class="table-head">
+          <h2>Flips</h2>
+          <p class="caption" id="flip-count"></p>
+        </div>
+        <div class="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Channel</th>
+                <th>Ticker</th>
+                <th>From</th>
+                <th>To</th>
+                <th>Prev date</th>
+                <th>1d / 5d after the flip</th>
+                <th>Video</th>
+              </tr>
+            </thead>
+            <tbody id="flip-body"></tbody>
+          </table>
+        </div>
+      </article>
+    </section>
+
+    <section id="tab-reaction" class="tab-panel">
+      <p class="disclaimer">Same-session moves are excluded. “Reaction” is the return from the next session’s open to that session’s close, by the sentiment in the video.</p>
+      <div class="kpi" id="react-kpis"></div>
+      <div class="charts">
+        <article class="card">
+          <h2>Mean next-session return</h2>
+          <p class="caption">By sentiment of the mention</p>
+          <div class="chart-box"><canvas id="chart-react-mean"></canvas></div>
+        </article>
+        <article class="card">
+          <h2>Share of positive next sessions</h2>
+          <p class="caption">Fraction of reactions that were up</p>
+          <div class="chart-box"><canvas id="chart-react-pos"></canvas></div>
+        </article>
+      </div>
+    </section>
+
+    <section id="tab-insights" class="tab-panel">
+      <p class="disclaimer" id="insights-disclaimer">Each card is one test: one chart and one sentence, sorted by evidence strength. A low p-value is not proof, and nothing here is a cause-and-effect claim.</p>
+      <div id="insights-list" class="insight-list"></div>
+    </section>
+  </div>
+
+  <script src="js/config.js"></script>
+  <script src="vendor/chart.umd.min.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>

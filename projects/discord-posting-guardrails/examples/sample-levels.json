@@ -1,0 +1,124 @@
+{
+  "schema_version": 1,
+  "week_of": "2026-11-09",
+  "thread_url": "https://discord.com/channels/${DISCORD_GUILD_ID}/${DISCORD_FORUM_CHANNEL_ID}/threads/${DISCORD_THREAD_ID}",
+  "generated_at": "2026-11-10T15:35:58-05:00",
+  "source": "examples/plan_1109",
+  "tickers": [
+    {
+      "symbol": "SPY",
+      "levels": [
+        {
+          "price": 700.0,
+          "role": "target",
+          "note": "flush target area if 733 breaks ('sub-700s')"
+        },
+        {
+          "price": 733.0,
+          "role": "support",
+          "note": "below 733 = flush likely to the sub-700s; 733 remains support"
+        },
+        {
+          "price": 748.0,
+          "role": "support",
+          "note": "holding the 748s (give or take) sometime this week = better possible entry"
+        },
+        {
+          "price": 751.24,
+          "role": "resistance",
+          "note": "next level up: July NFP high ('751 spot 24'); 'welcome to resistance'"
+        },
+        {
+          "price": 755.0,
+          "role": "resistance",
+          "note": "typical retracement / where a normal bounce would stop (spoken '755s')"
+        }
+      ],
+      "plan_note": "[ALSO IN 11/2 PLAN - no numeric levels then] Jason's read: bounce into resistance. 755s = where a normal bounce would stop; 751.24 is the next level up and \"resistance as we speak\". If 733 breaks, a flush toward the sub-700s is likely; 733 remains support. Holding the 748s (give or take) this week = a better possible entry. He wants last Thursday's lows to hold: a pullback this week (maybe on Tuesday's CPI) that holds, then a rally into the Dec 9 FOMC. Biggest discount could come if the market starts pricing a December hike. In the 4-year presidential cycle he calls this quarter's dip \"the dip\" to buy for the next 1-2 years, but can't say it's \"the bounce\" until the Dec 9 FOMC is through. Earnings: n/a (ETF). Weekly candle: {{WEEKLY_CANDLE}}. Chart read, not financial advice."
+    },
+    {
+      "symbol": "QQQ",
+      "levels": [],
+      "plan_note": "[ALSO IN 11/2 PLAN - 11/9 numbers ambiguous, see notes] Jason's read: sitting on resistance after a big bounce; the early-dip trade is \"more or less complete\", now watching for a roll over on the Q's. If it holds through the week that is good for a bounce, but not \"the\" bounce until Dec 9 FOMC is through. No level shown here because the spoken numbers were unclear. Earnings: n/a (ETF). Weekly candle: {{WEEKLY_CANDLE}}. Chart read, not financial advice."
+    },
+    {
+      "symbol": "NVDA",
+      "levels": [
+        {
+          "price": 75.0,
+          "role": "support",
+          "note": "if 120s lost, 85 then 75 'maybe, but that would be stupid'"
+        },
+        {
+          "price": 85.0,
+          "role": "support",
+          "note": "if 120s lost, deeper area 85 (he is not calling for it)"
+        },
+        {
+          "price": 120.0,
+          "role": "support",
+          "note": "discount area ('$121-ish, $120'); 'you've got to buy it' there"
+        },
+        {
+          "price": 180.0,
+          "role": "resistance",
+          "note": "needs to get over 180 to even consider a viable dip / recovery"
+        }
+      ],
+      "plan_note": "[NEW vs 11/2] Jason's read: \"knifed\" below all its SMAs after the weekend news. Needs to get over 180 to even consider this a viable dip or road to recovery; 120s (121-ish) = \"you've got to buy it\"; if that fails, 85 then 75 \"maybe, but that would be stupid\"; in a massive dump to the 85 area he'd tell himself \"shut up and buy it\" (he is not calling for that). Hard dip to buy, no expectation of an immediate turnaround; trading below Thursday's lows means \"you're not done yet\". Earnings: reports Tue 11/17/26 after the close. Weekly candle: {{WEEKLY_CANDLE}}. Chart read, not financial advice."
+    },
+    {
+      "symbol": "NBIS",
+      "levels": [
+        {
+          "price": 75.0,
+          "role": "target",
+          "note": "near-term downside if sub-113 ('probably going to see 75')"
+        },
+        {
+          "price": 113.0,
+          "role": "support",
+          "note": "sub-113 = heads to the 80s, probably 75s near term"
+        },
+        {
+          "price": 114.0,
+          "role": "support",
+          "note": "discounted technical approach, '114 and change'"
+        },
+        {
+          "price": 120.0,
+          "role": "support",
+          "note": "top of 114-120 support zone"
+        },
+        {
+          "price": 122.0,
+          "role": "support",
+          "note": "hold 122 (call it 123) = very high probability of 156"
+        },
+        {
+          "price": 123.0,
+          "role": "support",
+          "note": "hold 122, call it 123"
+        },
+        {
+          "price": 156.0,
+          "role": "resistance",
+          "note": "dead-cat-bounce target; over 156 'and only then' on the mend; 156 was prior support"
+        },
+        {
+          "price": 230.0,
+          "role": "resistance",
+          "note": "bounce from 156 roughly into the 230s, resistance (230-240)"
+        },
+        {
+          "price": 240.0,
+          "role": "resistance",
+          "note": "top of 230-240 resistance"
+        }
+      ],
+      "plan_note": "[ALSO IN 11/2 PLAN - levels updated] Jason's read: not on the road to recovery yet, on the road to a dead-cat bounce. Support 114-120 (\"114 and change\" is the discounted approach). Hold 122 (call it 123) = very high probability of 156. Over 156 \"and only then\" is it on the mend (156 was prior support); above that the bounce could reach roughly 230-240 (resistance). Sub-113 = the 80s, probably 75s near term. Last week: 157.50 / 120-115. Earnings: reports Thu 11/12/26 before the open. Weekly candle: {{WEEKLY_CANDLE}}. Chart read, not financial advice."
+    }
+  ],
+  "sample": true,
+  "note": "Trimmed example. Rebuild with: python3 levels_io.py build <plan_dir> --week-of YYYY-MM-DD"
+}

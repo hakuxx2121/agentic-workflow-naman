@@ -1,0 +1,83 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: otel-collector
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: observability
+  source:
+    repoURL: https://open-telemetry.github.io/opentelemetry-helm-charts
+    chart: opentelemetry-collector
+    targetRevision: {{ .Values.charts.otelCollector }}
+    helm:
+      valuesObject:
+        mode: daemonset # one collector per node: reads that node's kubelet stats + log files
+        image:
+          repository: otel/opentelemetry-collector-contrib
+        presets:
+          kubernetesAttributes: { enabled: true } # adds k8s.pod.name, k8s.namespace.name, ...
+          kubeletMetrics: { enabled: true }       # pod/container/node CPU + memory from the kubelet
+          logsCollection: { enabled: true }       # tails /var/log/pods/*
+        resources:
+          requests: { cpu: 50m, memory: 128Mi }
+          limits: { memory: 512Mi }
+        clusterRole:
+          rules:
+            - apiGroups: [""]
+              resources: ["pods", "endpoints", "services"]
+              verbs: ["get", "list", "watch"]
+        config:
+          receivers:
+            # Scrape the model server + its Envoy sidecar, only for pods on THIS node.
+            prometheus:
+              config:
+                scrape_configs:
+                  - job_name: llm
+                    scrape_interval: 15s
+                    kubernetes_sd_configs:
+                      - role: pod
+                        namespaces: { names: ["llm"] }
+                    relabel_configs:
+                      - source_labels: [__meta_kubernetes_pod_node_name]
+                        regex: ${env:K8S_NODE_NAME}
+                        action: keep
+                      - source_labels: [__meta_kubernetes_pod_container_port_name]
+                        regex: (llm-metrics|envoy-admin|vllm-http)
+                        action: keep
+                      - source_labels: [__meta_kubernetes_pod_container_port_name]
+                        regex: envoy-admin
+                        target_label: __metrics_path__
+                        replacement: /stats/prometheus
+                      - source_labels: [__meta_kubernetes_pod_name]
+                        target_label: pod
+                      - source_labels: [__meta_kubernetes_namespace]
+                        target_label: namespace
+                      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+                        target_label: app
+          exporters:
+            # Metrics -> self-hosted Prometheus (remote-write receiver).
+            prometheusremotewrite:
+              endpoint: http://kube-prometheus-stack-prometheus.monitoring.svc:9090/api/v1/write
+              resource_to_telemetry_conversion:
+                enabled: true
+            # Logs -> self-hosted Loki (native OTLP endpoint).
+            otlp_http/loki:
+              endpoint: http://loki.monitoring.svc:3100/otlp
+            # --- To send to Splunk Observability Cloud instead, see README "Swap to Splunk" ---
+          service:
+            pipelines:
+              metrics:
+                receivers: [otlp, prometheus]
+                exporters: [prometheusremotewrite]
+              logs:
+                exporters: [otlp_http/loki]
+              traces:
+                exporters: [debug]
+  {{- include "app.sync" . | nindent 2 }}

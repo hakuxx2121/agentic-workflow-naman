@@ -1,0 +1,22 @@
+# Terraform state & caches (state holds the lab server private key - never commit it)
+**/.terraform/*
+.terraform.lock.hcl.bak
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+*.tfvars
+!*.tfvars.example
+# Lab PKI output: keys, certs, CRLs
+pki/
+*.pem
+*.key
+*.crt
+*.csr
+*.crl
+*.p12
+# Never commit AWS creds
+.aws/
+credentials
+.env
+__pycache__/

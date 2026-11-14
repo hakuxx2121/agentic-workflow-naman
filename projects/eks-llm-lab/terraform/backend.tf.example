@@ -1,0 +1,11 @@
+# Optional remote state in S3. Create the bucket first (versioning ON), then:
+#   cp backend.tf.example backend.tf && terraform init -migrate-state
+terraform {
+  backend "s3" {
+    bucket       = "CHANGE-ME-tfstate-bucket" # must already exist
+    key          = "eks-llm-lab/terraform.tfstate"
+    region       = "us-east-1"
+    encrypt      = true
+    use_lockfile = true # S3-native locking (no DynamoDB table needed on Terraform >= 1.10)
+  }
+}

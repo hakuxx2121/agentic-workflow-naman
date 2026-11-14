@@ -1,0 +1,72 @@
+#!/bin/bash
+# Runs once at first boot (as root). Log: /var/log/user-data.log
+set -euxo pipefail
+exec > >(tee -a /var/log/user-data.log) 2>&1
+
+# --- k3s (single node) ---
+# traefik: off (the ALB is the front door; nginx is exposed as a NodePort)
+# servicelb: off (no LoadBalancer Services needed)
+# secrets-encryption: Kubernetes Secrets encrypted at rest in k3s's datastore
+curl -sfL https://get.k3s.io | \
+  INSTALL_K3S_VERSION="${k3s_version}" INSTALL_K3S_CHANNEL="stable" \
+  sh -s - server \
+    --disable traefik \
+    --disable servicelb \
+    --secrets-encryption \
+    --write-kubeconfig-mode 600 \
+    --node-name dashboard-k3s
+
+# Wait until the API answers and the node is Ready.
+for i in $(seq 1 60); do
+  if k3s kubectl get nodes 2>/dev/null | grep -q ' Ready'; then break; fi
+  sleep 5
+done
+k3s kubectl get nodes -o wide
+
+%{ if install_argocd ~}
+# --- Argo CD (trimmed for a 2 GiB node) via k3s's built-in Helm controller ---
+# Anything dropped in this folder is applied automatically by k3s.
+cat > /var/lib/rancher/k3s/server/manifests/argocd.yaml <<'MANIFEST'
+apiVersion: helm.cattle.io/v1
+kind: HelmChart
+metadata:
+  name: argo-cd
+  namespace: kube-system
+spec:
+  repo: https://argoproj.github.io/argo-helm
+  chart: argo-cd
+  version: "${argocd_chart_version}"
+  targetNamespace: argocd
+  createNamespace: true
+  valuesContent: |-
+    dex:
+      enabled: false
+    notifications:
+      enabled: false
+    configs:
+      params:
+        server.insecure: true        # reached only through an SSM port-forward, never exposed
+    controller:
+      resources:
+        requests: {cpu: 50m, memory: 256Mi}
+        limits: {memory: 512Mi}
+    repoServer:
+      resources:
+        requests: {cpu: 25m, memory: 96Mi}
+        limits: {memory: 256Mi}
+    server:
+      resources:
+        requests: {cpu: 25m, memory: 64Mi}
+        limits: {memory: 192Mi}
+    applicationSet:
+      resources:
+        requests: {cpu: 10m, memory: 48Mi}
+        limits: {memory: 128Mi}
+    redis:
+      resources:
+        requests: {cpu: 10m, memory: 32Mi}
+        limits: {memory: 96Mi}
+MANIFEST
+%{ endif ~}
+
+echo "user-data finished"

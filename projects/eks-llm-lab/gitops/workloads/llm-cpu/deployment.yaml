@@ -1,0 +1,92 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: llm-cpu
+  namespace: llm
+  labels:
+    app.kubernetes.io/name: llm-cpu
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: llm-cpu
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: llm-cpu
+    spec:
+      # Land on a Karpenter-managed CPU node (the system nodes are too small anyway).
+      nodeSelector:
+        workload-type: cpu
+      initContainers:
+        # Download the quantized model file once per pod start (~400 MB).
+        - name: fetch-model
+          image: curlimages/curl:8.17.0
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -e
+              if [ ! -s /models/model.gguf ]; then
+                curl -fL --retry 5 -o /models/model.gguf.part "$MODEL_URL"
+                mv /models/model.gguf.part /models/model.gguf
+              fi
+          env:
+            - name: MODEL_URL
+              value: https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF/resolve/main/qwen2.5-0.5b-instruct-q4_k_m.gguf
+          volumeMounts:
+            - { name: models, mountPath: /models }
+          resources:
+            requests: { cpu: 100m, memory: 64Mi }
+      containers:
+        - name: llama-server
+          # Pin to a specific build tag (e.g. server-bNNNN) once you've confirmed it works.
+          image: ghcr.io/ggml-org/llama.cpp:server
+          args:
+            - -m
+            - /models/model.gguf
+            - --alias
+            - qwen2.5-0.5b-instruct
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8081"
+            - --metrics
+            - --ctx-size
+            - "4096"
+            - --threads
+            - "3"
+            - --parallel
+            - "2"
+          ports:
+            - { name: llm-metrics, containerPort: 8081 }
+          readinessProbe:
+            httpGet: { path: /health, port: 8081 }
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: { path: /health, port: 8081 }
+            initialDelaySeconds: 60
+            periodSeconds: 20
+          # 3 vCPU / 3Gi will NOT fit on the t3.medium system nodes (2 vCPU),
+          # so the pod goes Pending and Karpenter launches a c/m xlarge spot node.
+          resources:
+            requests: { cpu: "3", memory: 3Gi }
+            limits: { memory: 4Gi }
+          volumeMounts:
+            - { name: models, mountPath: /models }
+        - name: envoy
+          image: envoyproxy/envoy:v1.40.2
+          args: ["-c", "/etc/envoy/envoy.yaml", "--log-level", "warn"]
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: envoy-admin, containerPort: 9901 }
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          volumeMounts:
+            - { name: envoy-config, mountPath: /etc/envoy }
+      volumes:
+        - name: models
+          emptyDir: { sizeLimit: 2Gi }
+        - name: envoy-config
+          configMap: { name: llm-envoy }

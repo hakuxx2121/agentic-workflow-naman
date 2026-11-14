@@ -1,0 +1,6 @@
+apiVersion: v2
+name: creator-dashboard
+description: Static "Creator Calls" dashboard served by unprivileged nginx, with an S3 sync sidecar (instance role, no keys in the cluster). Exposed as a fixed NodePort for an AWS ALB.
+type: application
+version: 0.1.0
+appVersion: "v2"

@@ -1,0 +1,9 @@
+NDTL - Gains v2 plots the intraday levels a day trader watches, the same on any chart timeframe.
+
+Opening range: Paper Prophet-style lock on 1-minute data. Each side follows the high or low from 9:30 and locks after 4 quiet minutes, never before 9:37.
+Premarket high/low (4:00-9:30 AM) and the gap line: the 7:57 PM 3-minute candle's high on a gap up, its low on a gap down.
+Prior day, week, month and quarter highs/lows, ADR and AWR bands, and the 20D/50D/200D/50W/200W SMAs.
+Premarket fib: from the first premarket extreme to the second, with 0.5/0.618/0.65 levels and 1.5/1.618/1.65 extensions. Gold fill 0.5-0.618, green 0.618-0.65, mirrored on the extensions.
+MTFC table: direction of the 15m, 1h, 4h, D and W candles with each one's Strat type (1/2u/2d/3), plus candle outlines and alerts when all align.
+
+Works with extended hours on or off. "Extend lines" (on by default) keeps the OR, premarket and gap lines and the fib up until the next day replaces them; off stops them at 4:00 PM ET.

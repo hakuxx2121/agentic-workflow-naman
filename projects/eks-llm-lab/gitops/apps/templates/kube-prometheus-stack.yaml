@@ -1,0 +1,49 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-prometheus-stack
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-2"
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: {{ .Values.charts.kubePrometheusStack }}
+    helm:
+      valuesObject:
+        alertmanager:
+          enabled: false # not needed for the lab
+        prometheus:
+          prometheusSpec:
+            enableRemoteWriteReceiver: true # the OTel Collector pushes metrics here
+            retention: 3d
+            serviceMonitorSelectorNilUsesHelmValues: false
+            podMonitorSelectorNilUsesHelmValues: false
+            resources:
+              requests: { cpu: 200m, memory: 1Gi }
+        kube-state-metrics:
+          # expose Karpenter labels so the dashboard can count Karpenter nodes / spot vs on-demand
+          metricLabelsAllowlist:
+            - nodes=[karpenter.sh/nodepool,karpenter.sh/capacity-type]
+        grafana:
+          # No hardcoded password: the chart generates one into the
+          # kube-prometheus-stack-grafana secret (see README).
+          sidecar:
+            dashboards:
+              enabled: true
+              label: grafana_dashboard
+              searchNamespace: ALL
+          additionalDataSources:
+            - name: Loki
+              type: loki
+              uid: loki
+              url: http://loki.monitoring.svc:3100
+              access: proxy
+  {{- include "app.sync" . | nindent 2 }}

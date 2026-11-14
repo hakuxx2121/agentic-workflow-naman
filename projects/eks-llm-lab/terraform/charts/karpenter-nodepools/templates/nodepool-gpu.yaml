@@ -1,0 +1,38 @@
+{{- if .Values.gpu.enabled }}
+apiVersion: karpenter.sh/v1
+kind: NodePool
+metadata:
+  name: gpu
+spec:
+  template:
+    metadata:
+      labels:
+        workload-type: gpu
+    spec:
+      nodeClassRef:
+        group: karpenter.k8s.aws
+        kind: EC2NodeClass
+        name: default
+      taints:
+        - key: nvidia.com/gpu # only pods that tolerate this land on (expensive) GPU nodes
+          value: "true"
+          effect: NoSchedule
+      requirements:
+        - key: kubernetes.io/arch
+          operator: In
+          values: ["amd64"]
+        - key: karpenter.sh/capacity-type
+          operator: In
+          values: ["spot", "on-demand"]
+        - key: karpenter.k8s.aws/instance-family
+          operator: In
+          values: {{ toJson .Values.gpu.families }}
+        - key: karpenter.k8s.aws/instance-size
+          operator: In
+          values: ["xlarge"]
+  limits:
+    cpu: {{ .Values.gpu.cpuLimit }}
+  disruption:
+    consolidationPolicy: WhenEmptyOrUnderutilized
+    consolidateAfter: 2m
+{{- end }}

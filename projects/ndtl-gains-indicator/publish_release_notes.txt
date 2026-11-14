@@ -1,0 +1,7 @@
+What's new
+
+- Works with extended hours on or off. Premarket high/low, the gap line, the opening range, the premarket fib and the MTFC now read extended-hours data in the background, so the levels are the same on a regular-hours-only chart as on an extended-hours chart. On regular-hours charts the premarket lines start at the 9:30 open. The "turn on extended hours" message is gone; you'll only see a note if a symbol truly has no premarket data that day.
+- New setting in General: "Extend lines through after-hours and premarket" (on by default). On: the opening range, premarket high/low, gap line and premarket fib (lines, labels and fills) stay on the chart through after-hours and the next premarket until the new day's levels replace them. Off: all of them stop at 4:00 PM ET.
+- Removed the green/red fill between the 20D and 50D moving averages. The SMA lines themselves are unchanged.
+
+Tip: settings were added and removed, so on charts that already have NDTL, open its Settings, click Defaults at the bottom and choose Reset settings.

@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (git-ignored) and edit.
+region          = "us-east-1"
+cluster_name    = "eks-llm-lab"
+gitops_repo_url = "https://github.com/CHANGE-ME/eks-llm-lab.git"
+gitops_revision = "main"
+
+# Flip to true only when you want to try the GPU (vLLM) variant.
+enable_gpu_nodepool = false

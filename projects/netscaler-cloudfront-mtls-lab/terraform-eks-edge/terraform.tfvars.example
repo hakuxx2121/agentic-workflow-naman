@@ -1,0 +1,2 @@
+domain    = "example.com" # a Route 53 hosted zone YOU own
+alb_ready = false         # flip to true in step 6, after Argo CD created the ALB

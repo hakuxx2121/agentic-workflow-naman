@@ -1,0 +1,24 @@
+{
+  "_README": [
+    "Flip tag settings for score.py. Edit the numbers below and rerun ./scripts/run_all.sh; nothing else needs to change.",
+    "A flip = the same creator switching a ticker from bullish to bearish (or back).",
+    "Tags, checked in this order:",
+    "  pending           - fewer than forward_sessions sessions of price data after the flip yet.",
+    "  ahead             - over the forward_sessions sessions after the flip (next session's open -> close of the Nth session),",
+    "                      the stock moved in the NEW direction by more than ahead_min_move.",
+    "  after             - not 'ahead', AND over the prior_sessions sessions before the flip the stock had already moved",
+    "                      in the new direction by more than prior_min_move (the creator flipped after the move, no follow-through).",
+    "  no_follow_through - neither: the stock did not move the new way afterwards and had not moved that way before.",
+    "Moves are decimals: 0.01 = 1%. Working definition from Manager Bot; Naman has NOT confirmed it yet."
+  ],
+  "forward_sessions": 5,
+  "_forward_sessions": "Sessions after the flip used for 'ahead'. 5 matches the 5D column.",
+  "prior_sessions": 5,
+  "_prior_sessions": "Sessions before the flip (ending on the last close on or before the video date) used for 'after'.",
+  "ahead_min_move": 0.0,
+  "_ahead_min_move": "Minimum move in the new direction after the flip to call it 'ahead'. 0.0 = any move the new way.",
+  "prior_min_move": 0.0,
+  "_prior_min_move": "Minimum move in the new direction before the flip to call it 'after'. 0.0 = any move the new way.",
+  "vs_spy": false,
+  "_vs_spy": "true = judge both windows on the move minus SPY's move over the same dates (removes the market's move)."
+}

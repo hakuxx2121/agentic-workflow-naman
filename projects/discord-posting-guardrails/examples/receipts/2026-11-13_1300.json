@@ -1,0 +1,19 @@
+{
+  "status": "posted",
+  "slot": "2026-11-13_1300",
+  "dry_run": false,
+  "mode": "post",
+  "file": "examples/updates/update_1113_1300.md",
+  "thread_id": "${DISCORD_THREAD_ID}",
+  "message_id": "${DISCORD_MESSAGE_ID}",
+  "content_sha256": "645509c11e43a4b60536b40f5a34d584d8660a48251a0eaf1221544eaab054dd",
+  "content_matches_file": true,
+  "http_status": 200,
+  "error": null,
+  "thread_name": null,
+  "thread_url": null,
+  "attachment": null,
+  "attachment_returned": null,
+  "warnings": [],
+  "timestamp": "2026-11-13T13:15:46-05:00"
+}

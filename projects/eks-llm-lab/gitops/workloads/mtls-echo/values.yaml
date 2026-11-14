@@ -1,0 +1,12 @@
+# Real values come from gitops/apps/values.yaml (mtlsLab.echo) via the Argo CD Application.
+domain: example.com
+mtlsHost: appian.example.com
+originHost: origin.example.com
+certificateArn: arn:aws:acm:us-east-1:111111111111:certificate/CHANGE-ME
+trustStoreArn: arn:aws:elasticloadbalancing:us-east-1:111111111111:truststore/mtls-lab-ts/CHANGE-ME
+cloudfrontPrefixListId: pl-CHANGE-ME
+originVerifySecret: CHANGE-ME
+mtlsAllowedCidrs: "0.0.0.0/0"
+identityField: subject
+albGroup: mtls-lab
+image: public.ecr.aws/docker/library/python:3.12-slim

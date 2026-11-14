@@ -1,0 +1,4 @@
+MTFC bar now hidden on higher timeframes by default
+- The MTFC bar at the top no longer shows on daily, weekly, monthly or quarterly charts (or higher). It still shows on every intraday chart.
+- New setting in "7 · Multi-timeframe continuity": "Also show it on D / W / M / Q charts" (off by default). Turn it on to bring the bar back on those timeframes.
+- Nothing else changed: MTFC candle outlines, MTFC alerts, levels and fibs work the same as before.

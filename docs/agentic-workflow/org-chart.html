@@ -1,0 +1,627 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Grok Bot company</title>
+<style>
+  @font-face {
+    font-family: "Outfit";
+    src: url("Outfit-VariableFont_wght.ttf") format("truetype");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: block;
+  }
+  @font-face {
+    font-family: "Geist";
+    src: url("Geist-VariableFont_wght.ttf") format("truetype");
+    font-weight: 100 900;
+    font-style: normal;
+    font-display: block;
+  }
+
+  :root {
+    --bg: #0A0C10;
+    --card: #161A23;
+    --card-2: #1C212C;
+    --line: rgba(255,255,255,0.09);
+    --text: #F3F5F8;
+    --muted: #C8CED7;
+    --dim: #A8B0BB;
+    --gold: #E8C36A;
+    --gold-2: #F3D58A;
+    --dashboard: #3DD68C;
+    --specialists: #7AADFF;
+    --qc: #FF9F43;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { background: #000; color: var(--text); }
+
+  #poster {
+    position: relative;
+    width: 1400px;
+    background:
+      radial-gradient(ellipse 900px 520px at 50% 180px, rgba(232,195,106,0.11), transparent 70%),
+      radial-gradient(ellipse 640px 460px at 8% 100%, rgba(61,214,140,0.06), transparent 60%),
+      radial-gradient(ellipse 600px 440px at 94% 88%, rgba(122,173,255,0.06), transparent 60%),
+      linear-gradient(180deg, #0E1118 0%, var(--bg) 200px, var(--bg) 100%);
+    padding: 64px 80px 52px;
+    overflow: hidden;
+    font-family: "Geist", sans-serif;
+  }
+
+  #poster::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(rgba(255,255,255,0.045) 1px, transparent 1px);
+    background-size: 28px 28px;
+    mask-image: linear-gradient(180deg, rgba(0,0,0,0.7) 0%, rgba(0,0,0,0.25) 300px, rgba(0,0,0,0.12) 100%);
+    pointer-events: none;
+  }
+
+  .frame {
+    position: absolute;
+    inset: 20px;
+    border: 1px solid rgba(232,195,106,0.18);
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .inner { position: relative; z-index: 1; }
+
+  header {
+    text-align: center;
+    margin-bottom: 36px;
+  }
+
+  .kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    font-family: "Outfit", sans-serif;
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 16px;
+  }
+  .kicker::before,
+  .kicker::after {
+    content: "";
+    width: 28px;
+    height: 1px;
+    background: var(--gold);
+    opacity: 0.7;
+  }
+
+  h1 {
+    font-family: "Outfit", sans-serif;
+    font-weight: 650;
+    font-size: 56px;
+    letter-spacing: -0.03em;
+    line-height: 1.05;
+    color: #fff;
+    margin-bottom: 14px;
+  }
+
+  .subtitle {
+    font-size: 20px;
+    font-weight: 400;
+    color: var(--muted);
+    letter-spacing: -0.01em;
+    line-height: 1.4;
+    max-width: 920px;
+    margin: 0 auto;
+  }
+
+  .chain {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .human, .router {
+    width: 720px;
+    text-align: center;
+    border-radius: 18px;
+    padding: 22px 36px 24px;
+  }
+
+  .human {
+    background:
+      linear-gradient(180deg, rgba(232,195,106,0.16), rgba(232,195,106,0.04) 48%, rgba(22,26,35,0.95)),
+      var(--card);
+    border: 1.5px solid rgba(232,195,106,0.55);
+    box-shadow:
+      0 0 0 1px rgba(232,195,106,0.08),
+      0 18px 50px rgba(0,0,0,0.35),
+      0 0 80px rgba(232,195,106,0.10);
+  }
+
+  .router {
+    background:
+      linear-gradient(180deg, rgba(232,195,106,0.09), rgba(232,195,106,0.02) 48%, rgba(22,26,35,0.95)),
+      var(--card);
+    border: 1px solid rgba(232,195,106,0.35);
+    box-shadow:
+      0 0 0 1px rgba(232,195,106,0.06),
+      0 14px 36px rgba(0,0,0,0.30);
+  }
+
+  .icon-wrap {
+    width: 52px;
+    height: 52px;
+    margin: 0 auto 10px;
+    border-radius: 50%;
+    border: 1.5px solid rgba(232,195,106,0.7);
+    background: rgba(232,195,106,0.10);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--gold-2);
+  }
+  .router .icon-wrap {
+    width: 46px;
+    height: 46px;
+  }
+
+  .label {
+    font-family: "Outfit", sans-serif;
+    font-weight: 600;
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--gold);
+    margin-bottom: 6px;
+  }
+
+  .human h2, .router h2 {
+    font-family: "Outfit", sans-serif;
+    font-weight: 650;
+    letter-spacing: -0.03em;
+    color: #fff;
+    margin-bottom: 8px;
+  }
+  .human h2 { font-size: 34px; }
+  .router h2 { font-size: 30px; }
+
+  .human p, .router p {
+    font-size: 16.5px;
+    line-height: 1.5;
+    color: var(--muted);
+    max-width: 640px;
+    margin: 0 auto;
+  }
+
+  .stem {
+    width: 1.6px;
+    height: 28px;
+    background: var(--gold);
+  }
+
+  .fork {
+    position: relative;
+    width: 100%;
+    height: 40px;
+  }
+  .fork-v {
+    position: absolute;
+    left: 50%;
+    top: 0;
+    width: 1.6px;
+    height: 20px;
+    background: var(--gold);
+    transform: translateX(-50%);
+  }
+  .fork-h {
+    position: absolute;
+    /* column centers at 25%-7px and 75%+7px when gap is 28px */
+    left: calc(25% - 7px);
+    right: calc(25% - 7px);
+    top: 20px;
+    height: 1.6px;
+    background: var(--gold);
+  }
+  .fork-down-l,
+  .fork-down-r {
+    position: absolute;
+    top: 20px;
+    width: 1.6px;
+    height: 20px;
+    background: var(--gold);
+  }
+  .fork-down-l { left: calc(25% - 7px); }
+  .fork-down-r { right: calc(25% - 7px); }
+
+  .columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 28px;
+    width: 100%;
+    align-items: start;
+  }
+
+  .floor {
+    background: rgba(20,24,32,0.88);
+    border: 1px solid var(--line);
+    border-radius: 16px;
+    padding: 22px;
+    position: relative;
+  }
+  .floor::before {
+    content: "";
+    position: absolute;
+    left: 22px;
+    right: 22px;
+    top: 0;
+    height: 3px;
+    border-radius: 0 0 2px 2px;
+  }
+  .floor.dashboard::before { background: var(--dashboard); }
+  .floor.specialists::before { background: var(--specialists); }
+
+  .floor-head {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 16px;
+  }
+  .floor-head .swatch {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex: none;
+  }
+  .floor.dashboard .swatch { background: var(--dashboard); box-shadow: 0 0 8px var(--dashboard); }
+  .floor.specialists .swatch { background: var(--specialists); box-shadow: 0 0 8px var(--specialists); }
+
+  .floor h3 {
+    font-family: "Outfit", sans-serif;
+    font-weight: 650;
+    font-size: 15px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+  }
+  .floor.dashboard h3 { color: var(--dashboard); }
+  .floor.specialists h3 { color: var(--specialists); }
+
+  .floor-note {
+    margin-left: auto;
+    font-size: 13px;
+    color: var(--dim);
+  }
+
+  .lead {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    background:
+      linear-gradient(180deg, rgba(61,214,140,0.10), rgba(28,33,44,0.95));
+    border: 1px solid rgba(61,214,140,0.32);
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+  }
+  .lead .bot-icon {
+    flex: none;
+    width: 40px;
+    height: 40px;
+    border-radius: 9px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(61,214,140,0.14);
+    color: var(--dashboard);
+  }
+  .lead h4 {
+    font-family: "Outfit", sans-serif;
+    font-weight: 650;
+    font-size: 22px;
+    letter-spacing: -0.02em;
+    color: #fff;
+    margin-bottom: 2px;
+  }
+  .lead .role {
+    font-family: "Outfit", sans-serif;
+    font-weight: 620;
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--dashboard);
+    margin-bottom: 6px;
+  }
+  .lead p.blurb {
+    font-size: 14.5px;
+    line-height: 1.45;
+    color: var(--muted);
+  }
+
+  .members {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  .member.dual {
+    grid-column: 1 / -1;
+  }
+
+  .member {
+    background: var(--card-2);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    padding: 14px 16px;
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+  }
+  .member.dual {
+    border-color: rgba(255,159,67,0.45);
+    background:
+      linear-gradient(180deg, rgba(255,159,67,0.08), rgba(28,33,44,0.96));
+  }
+  .member .bot-icon {
+    flex: none;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(61,214,140,0.12);
+    color: var(--dashboard);
+  }
+  .member.dual .bot-icon {
+    background: rgba(255,159,67,0.14);
+    color: var(--qc);
+  }
+  .member h4 {
+    font-family: "Outfit", sans-serif;
+    font-weight: 650;
+    font-size: 17px;
+    letter-spacing: -0.02em;
+    color: #fff;
+    margin-bottom: 2px;
+  }
+  .member .role {
+    font-size: 13.5px;
+    color: var(--muted);
+  }
+  .dual-badge {
+    display: inline-flex;
+    margin-top: 8px;
+    font-family: "Outfit", sans-serif;
+    font-weight: 650;
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--qc);
+    background: rgba(255,159,67,0.12);
+    border: 1px solid rgba(255,159,67,0.4);
+    border-radius: 999px;
+    padding: 4px 10px;
+  }
+
+  .spec-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .specialist {
+    background: var(--card-2);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 13px 14px;
+  }
+  .specialist h4 {
+    font-family: "Outfit", sans-serif;
+    font-weight: 620;
+    font-size: 16.5px;
+    letter-spacing: -0.02em;
+    color: #fff;
+  }
+
+  .spec-footnote {
+    margin-top: 14px;
+    font-size: 13.5px;
+    line-height: 1.45;
+    color: var(--dim);
+    padding: 10px 12px;
+    border-radius: 10px;
+    border: 1px dashed rgba(255,159,67,0.35);
+    color: #E8D0B0;
+  }
+  .spec-footnote strong {
+    color: var(--qc);
+    font-weight: 600;
+  }
+
+  footer {
+    margin-top: 32px;
+    display: flex;
+    justify-content: space-evenly;
+    align-items: center;
+    gap: 12px;
+    background: rgba(20,24,32,0.88);
+    border: 1px solid rgba(232,195,106,0.22);
+    border-radius: 14px;
+    padding: 14px 20px;
+  }
+  .guard {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 14.5px;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+  .guard svg { color: var(--gold); flex: none; }
+  footer .guard + .guard {
+    border-left: 1px solid var(--line);
+    padding-left: 18px;
+  }
+</style>
+</head>
+<body>
+  <div id="poster">
+    <div class="frame"></div>
+    <div class="inner">
+      <header>
+        <div class="kicker">Org chart</div>
+        <h1>Grok Bot company</h1>
+        <p class="subtitle">Naman is CEO. CEO Bot routes and reviews. Manager Bot runs the Creator Dashboard team.</p>
+      </header>
+
+      <div class="chain">
+        <article class="human" id="naman">
+          <div class="icon-wrap"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="12" cy="8" r="3.2"/>
+  <path d="M5.5 19c1.2-3.1 3.6-4.6 6.5-4.6S16.8 15.9 18 19"/>
+</svg></div>
+          <div class="label">CEO · human</div>
+          <h2>Naman</h2>
+          <p>Directs the fleet and approves anything that posts or sends.</p>
+        </article>
+
+        <div class="stem" aria-hidden="true"></div>
+
+        <article class="router" id="ceo_bot">
+          <div class="icon-wrap"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="12" cy="12" r="3"/>
+  <path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.2 2.2M16.2 16.2l2.2 2.2M18.4 5.6l-2.2 2.2M7.8 16.2l-2.2 2.2"/>
+</svg></div>
+          <div class="label">Primary router and reviewer</div>
+          <h2>CEO Bot</h2>
+          <p>Routes work to the right specialist, reviews output, and reports to Naman.</p>
+        </article>
+
+      </div>
+
+      <div class="fork" aria-hidden="true">
+        <div class="fork-v"></div>
+        <div class="fork-h"></div>
+        <div class="fork-down-l"></div>
+        <div class="fork-down-r"></div>
+      </div>
+
+      <div class="columns">
+        <section class="floor dashboard">
+          <div class="floor-head">
+            <span class="swatch"></span>
+            <h3>Creator Dashboard team</h3>
+          </div>
+
+          <article class="lead" id="manager_bot">
+            <div class="bot-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+  <circle cx="12" cy="12" r="8"/>
+  <path d="m8.5 12 2.3 2.3 4.7-5"/>
+</svg></div>
+            <div>
+              <h4>Manager Bot</h4>
+              <div class="role">Team lead</div>
+              <p class="blurb">Coordinates specs, build, QA, infra, and publishing for the Creator Dashboard.</p>
+            </div>
+          </article>
+
+          <div class="members">
+            
+            <article class="member" id="business_logic_writer">
+              <div class="bot-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10v16H7z"/><path d="M10 8h4M10 12h4M10 16h2"/></svg></div>
+              <div class="bot-body">
+                <h4>Business Logic Writer</h4>
+                <p class="role">Specs</p>
+                
+              </div>
+            </article>
+            <article class="member" id="graph_bot">
+              <div class="bot-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5h7l8 7-8 7H4Z"/></svg></div>
+              <div class="bot-body">
+                <h4>Graph Bot</h4>
+                <p class="role">Builds</p>
+                
+              </div>
+            </article>
+            <article class="member" id="dashboard_qa">
+              <div class="bot-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h8v6l-2.5 3.5L16 16v5H8v-5l2.5-3.5L8 9V3Z"/></svg></div>
+              <div class="bot-body">
+                <h4>Dashboard QA</h4>
+                <p class="role">Tests</p>
+                
+              </div>
+            </article>
+            <article class="member" id="github_bot">
+              <div class="bot-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M3 12h6M15 12h6M12 3v6M12 15v6"/></svg></div>
+              <div class="bot-body">
+                <h4>GitHub Bot</h4>
+                <p class="role">Publishing</p>
+                
+              </div>
+            </article>
+            <article class="member dual" id="tech_bot">
+              <div class="bot-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="6" rx="1.5"/><rect x="3" y="14" width="18" height="6" rx="1.5"/><path d="M7 7h.01M7 17h.01"/></svg></div>
+              <div class="bot-body">
+                <h4>Tech Bot</h4>
+                <p class="role">Infra</p>
+                <div class="dual-badge">Also a specialist under CEO Bot</div>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <section class="floor specialists">
+          <div class="floor-head">
+            <span class="swatch"></span>
+            <h3>Specialists</h3>
+            <span class="floor-note">Report to CEO Bot</span>
+          </div>
+          <div class="spec-grid">
+            
+            <article class="specialist" id="job_bot">
+              <h4>Job Bot</h4>
+            </article>
+            <article class="specialist" id="car_bot">
+              <h4>Car Bot</h4>
+            </article>
+            <article class="specialist" id="vlog_editor_helper">
+              <h4>Vlog Editor Helper</h4>
+            </article>
+            <article class="specialist" id="recipe_bot">
+              <h4>Recipe Bot</h4>
+            </article>
+            <article class="specialist" id="tradingview_bot">
+              <h4>TradingViewBot</h4>
+            </article>
+            <article class="specialist" id="tv_bot">
+              <h4>TV Bot</h4>
+            </article>
+            <article class="specialist" id="ticker_tracker">
+              <h4>Ticker Tracker</h4>
+            </article>
+            <article class="specialist" id="three_tier">
+              <h4>3-Tier Stock Check</h4>
+            </article>
+            <article class="specialist" id="earnings_call_bot">
+              <h4>Earnings Call Bot</h4>
+            </article>
+            <article class="specialist" id="ndtl_gains">
+              <h4>NDTL - Gains</h4>
+            </article>
+            <article class="specialist" id="medical_advice">
+              <h4>Medical Advice</h4>
+            </article>
+            <article class="specialist" id="workout_bot">
+              <h4>Workout Bot</h4>
+            </article>
+          </div>
+          <p class="spec-footnote"><strong>Tech Bot</strong> is shown once, on the Creator Dashboard team. It also reports to CEO Bot as a specialist.</p>
+        </section>
+      </div>
+
+      <footer>
+        <div class="guard"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3 5 6v6c0 5 3.2 8 7 9 3.8-1 7-4 7-9V6l-7-3Z"/></svg>Approval before anything posts or sends</div><div class="guard"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><path d="M8 12h8"/></svg>No trades placed by bots</div><div class="guard"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5h7l8 7-8 7H4Z"/></svg>Chart reads, not financial advice</div>
+      </footer>
+    </div>
+  </div>
+</body>
+</html>

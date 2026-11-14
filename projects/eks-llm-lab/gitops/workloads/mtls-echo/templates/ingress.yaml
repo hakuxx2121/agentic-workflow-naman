@@ -1,0 +1,57 @@
+# ONE ALB (IngressGroup "{{ .Values.albGroup }}") with two listeners:
+#   :443  mTLS VERIFY (trust store + CRL)  host {{ .Values.mtlsHost }}   <- users/CAC, bypasses CloudFront
+#   :8443 plain HTTPS, CloudFront only      host {{ .Values.originHost }} <- CloudFront origin
+# mutual-authentication is per listener port, which is why the CloudFront origin uses a different port.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mtls-echo-mtls
+  annotations:
+    alb.ingress.kubernetes.io/group.name: {{ .Values.albGroup }}
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/certificate-arn: {{ .Values.certificateArn }}
+    alb.ingress.kubernetes.io/ssl-policy: ELBSecurityPolicy-TLS13-1-2-2021-06
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 443}]'
+    alb.ingress.kubernetes.io/inbound-cidrs: {{ .Values.mtlsAllowedCidrs | quote }}
+    alb.ingress.kubernetes.io/mutual-authentication: '[{"port": 443, "mode": "verify", "trustStore": "{{ .Values.trustStoreArn }}", "ignoreClientCertificateExpiry": false, "advertiseTrustStoreCaNames": "on"}]'
+    alb.ingress.kubernetes.io/load-balancer-attributes: routing.http.drop_invalid_header_fields.enabled=true
+    alb.ingress.kubernetes.io/tags: Project=mtls-lab
+spec:
+  ingressClassName: alb
+  rules:
+    - host: {{ .Values.mtlsHost }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: mtls-echo, port: { name: http } }
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mtls-echo-cloudfront-origin
+  annotations:
+    alb.ingress.kubernetes.io/group.name: {{ .Values.albGroup }}
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /healthz
+    alb.ingress.kubernetes.io/certificate-arn: {{ .Values.certificateArn }}
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTPS": 8443}]'
+    # Layer 1: only CloudFront's origin-facing IPs may reach :8443 (managed prefix list on the ALB SG).
+    alb.ingress.kubernetes.io/security-group-prefix-lists: {{ .Values.cloudfrontPrefixListId }}
+    # Layer 2: and only if CloudFront's secret origin header is present. Anything else gets the ALB's default 404.
+    alb.ingress.kubernetes.io/conditions.mtls-echo: >-
+      [{"field":"http-header","httpHeaderConfig":{"httpHeaderName":"X-Origin-Verify","values":["{{ .Values.originVerifySecret }}"]}}]
+spec:
+  ingressClassName: alb
+  rules:
+    - host: {{ .Values.originHost }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service: { name: mtls-echo, port: { name: http } }

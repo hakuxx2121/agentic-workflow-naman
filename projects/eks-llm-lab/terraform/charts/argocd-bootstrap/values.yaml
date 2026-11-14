@@ -1,0 +1,3 @@
+repoURL: https://github.com/CHANGE-ME/eks-llm-lab.git
+targetRevision: main
+gpuEnabled: false

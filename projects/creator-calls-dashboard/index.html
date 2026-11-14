@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Creator Calls · Ticker Timeline</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23151922'/%3E%3Cpath d='M3 11l3-4 3 2 4-5' stroke='%237aa2ff' stroke-width='1.6' fill='none'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/v2.css">
+</head>
+<body>
+  <header class="bar">
+    <div class="brand"><span class="logo">◆</span> Creator Calls</div>
+    <nav class="tabs" role="tablist">
+      <button type="button" class="active" data-tab="timeline" role="tab" aria-selected="true">Ticker Timeline</button>
+      <button type="button" data-tab="creators" role="tab" aria-selected="false">Creators</button>
+      <button type="button" data-tab="flips" role="tab" aria-selected="false">Flips</button>
+      <button type="button" data-tab="mentions" role="tab" aria-selected="false">Mentions</button>
+      <button type="button" data-tab="reaction" role="tab" aria-selected="false">Reaction</button>
+      <button type="button" data-tab="insights" role="tab" aria-selected="false">Insights</button>
+    </nav>
+    <div id="stamp" class="stamp"></div>
+  </header>
+
+  <section class="filters" id="filters">
+    <label>From <input type="date" id="from"></label>
+    <label>To <input type="date" id="to"></label>
+    <label>Creator <select id="channel"><option value="">All creators</option></select></label>
+    <label>Ticker <select id="ticker"><option value="">All tickers</option></select></label>
+    <label>Sentiment
+      <select id="sentiment">
+        <option value="">Any</option>
+        <option value="bullish">▲ Bullish</option>
+        <option value="bearish">▼ Bearish</option>
+        <option value="mixed">◆ Mixed</option>
+        <option value="neutral">● Neutral</option>
+      </select>
+    </label>
+    <div class="seg" role="group" aria-label="Return basis" title="vs SPY removes the whole market's move over the same days, so you see what the stock did on its own.">
+      <button type="button" id="basis-raw" class="on" aria-pressed="true">Raw</button>
+      <button type="button" id="basis-spy" aria-pressed="false">vs SPY</button>
+    </div>
+    <button type="button" class="btn" id="holdings" aria-pressed="false">★ My holdings</button>
+    <button type="button" class="btn" id="reset">Reset</button>
+  </section>
+
+  <p id="status" class="status" hidden></p>
+
+  <!-- TIMELINE -->
+  <main id="tab-timeline" class="tab-panel active">
+    <div class="tl-grid">
+      <aside class="panel tl-list">
+        <div class="panel-head">
+          <h2>Tickers</h2>
+          <p class="caption">Most-mentioned first. Bar = bullish vs bearish calls. % = last 5 sessions.</p>
+          <input type="search" id="tsearch" placeholder="Find ticker…" aria-label="Find ticker">
+        </div>
+        <div id="tlist" class="tlist"></div>
+      </aside>
+
+      <section class="panel tl-center">
+        <div id="focus-head" class="focus-head"></div>
+        <div class="legend">
+          <span><i class="ln close"></i>Close</span>
+          <span><i class="ln s20"></i>20-day avg</span>
+          <span><i class="ln s50"></i>50-day avg</span>
+          <span class="g bull">▲ bullish call</span>
+          <span class="g bear">▼ bearish call</span>
+          <span><i class="ring"></i>flip</span>
+        </div>
+        <div id="chart" class="chart-wrap"><svg id="chart-overlay" class="overlay"></svg></div>
+        <p id="chart-note" class="caption"></p>
+        <div class="lanes-head">
+          <h3>Who called it, and when they flipped</h3>
+          <p class="caption">One row per creator, lined up with the chart’s dates. ▲ bullish · ▼ bearish · ◆ mixed · ● neutral. A ring marks a flip; its tag says whether the stock moved the new way afterwards. <span id="flip-def-short"></span></p>
+        </div>
+        <div id="lanes" class="lanes"><svg id="lanes-svg"></svg></div>
+      </section>
+
+      <aside class="panel tl-calls">
+        <div class="panel-head">
+          <h2 id="calls-title">Calls</h2>
+          <p class="caption">Returns start at the next session’s open after the video. vs SPY = to-date return minus the market’s (SPY) move over the same days. MA = price above ▲ or below ▼ its 20/50-day average when the call was made. Measurement only.</p>
+        </div>
+        <div class="table-scroll calls-scroll">
+          <table class="calls">
+            <thead><tr><th>Date</th><th>Creator</th><th>Call</th><th class="r">1D</th><th class="r">5D</th><th class="r">To date</th><th class="r">vs SPY</th><th>MA 20/50</th></tr></thead>
+            <tbody id="calls-body"></tbody>
+          </table>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <!-- CREATORS / SCORECARD -->
+  <main id="tab-creators" class="tab-panel">
+    <p class="note">Hit rate = the share of bullish (▲) or bearish (▼) calls where the stock then moved the way the creator said. It is a measurement of past calls only, not advice. Mixed and neutral mentions are not scored. Pending calls (not enough sessions yet) are kept apart and never counted as misses. <span id="basis-note"></span></p>
+    <div class="kpi" id="score-kpis"></div>
+    <div class="two">
+      <article class="panel">
+        <h2>Hit rate by creator</h2>
+        <p class="caption" id="cap-score-ch">5-session and next-session hit rates. n = scored calls. Dashed line = 50% (a coin flip).</p>
+        <div class="chart-box tall"><canvas id="chart-score-channel"></canvas></div>
+      </article>
+      <article class="panel">
+        <div class="table-head"><h2>Creator × ticker</h2><p class="caption" id="split-count"></p></div>
+        <p class="caption">Each creator’s record on each ticker. Under 10 scored calls is too few to trust; those rows say so.</p>
+        <div class="table-scroll split-scroll">
+          <table>
+            <thead><tr><th data-sort-split="channel">Creator</th><th data-sort-split="ticker">Ticker</th><th data-sort-split="directional">Calls</th><th class="r" data-sort-split="hit1">1D hit</th><th class="r" data-sort-split="hit5">5D hit</th><th class="r" data-sort-split="hitspy">5D vs SPY</th><th class="r" data-sort-split="hittd">To date</th><th class="r" data-sort-split="pending">Pending</th><th data-sort-split="n5">Sample</th></tr></thead>
+            <tbody id="split-body"></tbody>
+          </table>
+        </div>
+      </article>
+    </div>
+    <article class="panel">
+      <div class="table-head"><h2>Scored calls</h2><p class="caption" id="score-count"></p></div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr>
+            <th data-sort-score="date">Date</th><th data-sort-score="channel">Creator</th><th data-sort-score="ticker">Ticker</th><th data-sort-score="sentiment">Call</th>
+            <th class="r" data-sort-score="ret_1d">1D</th><th class="r" data-sort-score="ret_5d">5D</th><th data-sort-score="hit_5d">5D result</th><th class="r" data-sort-score="ex_5d">5D vs SPY</th>
+            <th class="r" data-sort-score="ret_td">To date</th><th class="r" data-sort-score="ex_td">To date vs SPY</th><th>MA 20/50</th><th>Video</th>
+          </tr></thead>
+          <tbody id="score-body"></tbody>
+        </table>
+      </div>
+    </article>
+  </main>
+
+  <!-- FLIPS -->
+  <main id="tab-flips" class="tab-panel">
+    <p class="note" id="flip-def"></p>
+    <div class="kpi" id="flip-kpis"></div>
+    <article class="panel">
+      <div class="table-head"><h2>Flips</h2><p class="caption" id="flip-count"></p></div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th>Date</th><th>Creator</th><th>Ticker</th><th>Change</th><th>Prev call</th><th class="r" id="th-prior">Before</th><th class="r" id="th-fwd">After</th><th>Tag</th><th>1D / 5D after the flip</th><th>Video</th></tr></thead>
+          <tbody id="flip-body"></tbody>
+        </table>
+      </div>
+    </article>
+  </main>
+
+  <!-- MENTIONS -->
+  <main id="tab-mentions" class="tab-panel">
+    <div class="two">
+      <article class="panel"><h2>Top tickers</h2><p class="caption" id="cap-tickers">Mention count, split by sentiment</p><div class="chart-box tall"><canvas id="chart-tickers"></canvas></div></article>
+      <article class="panel"><h2>Sentiment by creator</h2><p class="caption">Split of mentions on each channel</p><div class="chart-box tall"><canvas id="chart-channels"></canvas></div></article>
+    </div>
+    <article class="panel"><h2>Mentions over time</h2><p class="caption">Daily counts. Gaps are days with no mentions.</p><div class="chart-box"><canvas id="chart-time"></canvas></div></article>
+    <article class="panel">
+      <div class="table-head"><h2>Mentions</h2><p class="caption" id="table-count"></p></div>
+      <div class="table-scroll">
+        <table>
+          <thead><tr><th data-sort="date">Date</th><th data-sort="channel">Creator</th><th data-sort="ticker">Ticker</th><th data-sort="sentiment">Sentiment</th><th data-sort="price_talk">Price talk</th><th data-sort="summary">Summary</th><th>Video</th></tr></thead>
+          <tbody id="mentions-body"></tbody>
+        </table>
+      </div>
+    </article>
+  </main>
+
+  <!-- REACTION -->
+  <main id="tab-reaction" class="tab-panel">
+    <p class="note">Same-session moves are excluded. “Reaction” is the return from the next session’s open to that session’s close, grouped by the sentiment in the video. <span id="react-basis"></span></p>
+    <div class="kpi" id="react-kpis"></div>
+    <div class="two">
+      <article class="panel"><h2>Average next-session return</h2><p class="caption">By sentiment of the mention</p><div class="chart-box"><canvas id="chart-react-mean"></canvas></div></article>
+      <article class="panel"><h2>Share of next sessions that were up</h2><p class="caption">Fraction of reactions above zero</p><div class="chart-box"><canvas id="chart-react-pos"></canvas></div></article>
+    </div>
+  </main>
+
+  <!-- INSIGHTS -->
+  <main id="tab-insights" class="tab-panel">
+    <p class="note" id="insights-disclaimer">Each card is one test: one chart and one sentence, sorted by strength of evidence. A low p-value is not proof, and nothing here is a cause-and-effect claim.</p>
+    <p class="caption ins-key">n = how many calls the test used. p = the chance of seeing a gap this big by luck alone if there were no real pattern (lower = less likely luck). “Could be chance” means luck explains it fine. Insights use all data and ignore the filters above.</p>
+    <div id="insights-list" class="insight-list"></div>
+  </main>
+
+  <footer class="foot">
+    Hit rates are measurements of past calls, not trading advice. Prices: Yahoo daily bars cached in prices.json; missing prices stay missing.
+    Charts by <a href="https://www.tradingview.com/" target="_blank" rel="noreferrer">TradingView Lightweight Charts™</a> (Apache-2.0, see vendor/lightweight-charts/NOTICE) and Chart.js.
+  </footer>
+
+  <script src="js/config.js"></script>
+  <script src="vendor/chart.umd.min.js"></script>
+  <script src="vendor/lightweight-charts/lightweight-charts.standalone.production.js"></script>
+  <script src="js/v2.js"></script>
+</body>
+</html>

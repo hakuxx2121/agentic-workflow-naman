@@ -1,0 +1,32 @@
+{{- if .Values.mtlsLab.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aws-load-balancer-controller
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/sync-wave: "-1"   # controller (and its webhook) before Ingresses
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  source:
+    repoURL: https://aws.github.io/eks-charts
+    chart: aws-load-balancer-controller
+    targetRevision: {{ .Values.mtlsLab.awsLoadBalancerControllerChart | quote }}
+    helm:
+      valuesObject:
+        clusterName: {{ .Values.mtlsLab.clusterName | quote }}
+        region: {{ .Values.mtlsLab.region | quote }}
+        vpcId: {{ .Values.mtlsLab.vpcId | quote }}
+        replicaCount: 1
+        serviceAccount:
+          create: true
+          name: aws-load-balancer-controller   # must match the Pod Identity association in Terraform
+        nodeSelector:
+          node-role/system: "true"
+  {{- include "app.sync" . | nindent 2 }}
+{{- end }}

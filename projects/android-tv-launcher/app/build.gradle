@@ -1,0 +1,14 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'com.naman.tvhome'
+    compileSdk 34
+    buildToolsVersion '34.0.0'
+    defaultConfig { applicationId 'com.naman.tvhome'; minSdk 26; targetSdk 30; versionCode 3; versionName '1.2' }
+    // Signing: use the local Android debug keystore (not in git). See README.
+    buildTypes {
+        release { minifyEnabled true; shrinkResources false; proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'); signingConfig signingConfigs.debug }
+        debug { signingConfig signingConfigs.debug }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_1_8; targetCompatibility JavaVersion.VERSION_1_8 }
+    lint { checkReleaseBuilds false; abortOnError false }
+}

@@ -1,0 +1,4 @@
+Creator Calls dashboard
+- nginx listens on NodePort {{ .Values.service.nodePort }} (the ALB target group port).
+- Content comes from s3://{{ .Values.sync.bucket }}/{{ .Values.sync.prefix }} every {{ .Values.sync.intervalSeconds }}s.
+Check: kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "cd.fullname" . }} -c s3-sync

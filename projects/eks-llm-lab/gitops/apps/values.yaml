@@ -1,0 +1,31 @@
+# These are overridden by the root Application that Terraform creates.
+repoURL: https://github.com/CHANGE-ME/eks-llm-lab.git
+targetRevision: main
+gpu:
+  enabled: false
+
+charts:
+  kubePrometheusStack: 92.14.0
+  loki: 7.5.0
+  otelCollector: 0.177.0
+  nvidiaDevicePlugin: 0.20.1
+
+# ---- mTLS front-door lab (netscaler-cloudfront-mtls-lab). Off by default. ----
+# Fill these in from `terraform output` (eks-llm-lab) and `terraform output`
+# (netscaler-cloudfront-mtls-lab/terraform-eks-edge), then set enabled: true and push.
+mtlsLab:
+  enabled: false
+  awsLoadBalancerControllerChart: 3.6.2   # supports alb.ingress.kubernetes.io/mutual-authentication
+  clusterName: eks-llm-lab
+  region: us-east-1
+  vpcId: vpc-CHANGE-ME
+  echo:
+    domain: example.com                     # your Route 53 hosted zone
+    mtlsHost: appian.example.com            # mTLS host -> ALB directly (bypasses CloudFront)
+    originHost: origin.example.com          # CloudFront's origin hostname -> same ALB, port 8443
+    certificateArn: arn:aws:acm:us-east-1:111111111111:certificate/CHANGE-ME
+    trustStoreArn: arn:aws:elasticloadbalancing:us-east-1:111111111111:truststore/mtls-lab-ts/CHANGE-ME
+    cloudfrontPrefixListId: pl-CHANGE-ME    # com.amazonaws.global.cloudfront.origin-facing
+    originVerifySecret: CHANGE-ME           # LAB SHORTCUT: lives in git; see step 6 of the guide
+    mtlsAllowedCidrs: "0.0.0.0/0"           # tighten to your-ip/32
+    identityField: subject                  # subject | serial | dn | upn

@@ -1,0 +1,58 @@
+# Secrets and local env
+.env
+.env.*
+!.env.example
+credentials
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.csr
+*.crl
+debug.keystore
+local.properties
+id_rsa
+id_rsa.pub
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Python / Node
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+node_modules/
+
+# OS / editor / logs
+.DS_Store
+*.log
+.idea/
+.vscode/
+
+# Local data dumps and generated artifacts (sample JSON that ships in the repo is fine)
+**/transcripts/
+**/analysis/
+**/data/full/
+
+# Android
+*.keystore
+*.jks
+*.apk
+build/
+.gradle/
+local.properties

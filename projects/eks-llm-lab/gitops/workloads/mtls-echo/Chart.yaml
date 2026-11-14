@@ -1,0 +1,5 @@
+apiVersion: v2
+name: mtls-echo
+description: Mock "Appian" echo app behind an ALB with mTLS verify (lab)
+type: application
+version: 0.1.0

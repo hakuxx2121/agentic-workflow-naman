@@ -1,0 +1,45 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mtls-echo
+  labels: { app: mtls-echo }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: mtls-echo }
+  template:
+    metadata:
+      labels: { app: mtls-echo }
+      annotations:
+        checksum/app: {{ .Files.Get "files/app.py" | sha256sum }}
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65534
+      containers:
+        - name: app
+          image: {{ .Values.image }}
+          command: ["python3", "/app/app.py"]
+          env:
+            - { name: IDENTITY_FIELD, value: {{ .Values.identityField | quote }} }
+            - { name: PORT, value: "8080" }
+            - { name: PYTHONUNBUFFERED, value: "1" }
+          ports:
+            - { name: http, containerPort: 8080 }
+          readinessProbe:
+            httpGet: { path: /healthz, port: http }
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 64Mi }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: app, mountPath: /app }
+            - { name: tmp, mountPath: /tmp }   # app.py writes a temp file to parse the UPN
+      volumes:
+        - name: app
+          configMap: { name: mtls-echo-app }
+        - name: tmp
+          emptyDir: {}

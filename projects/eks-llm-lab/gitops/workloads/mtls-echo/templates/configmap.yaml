@@ -1,0 +1,8 @@
+# Same app.py as netscaler-cloudfront-mtls-lab/local/backend (copy kept in files/).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mtls-echo-app
+data:
+  app.py: |
+{{ .Files.Get "files/app.py" | indent 4 }}

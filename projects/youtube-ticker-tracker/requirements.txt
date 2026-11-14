@@ -1,0 +1,1 @@
+yt-dlp\nyoutube_transcript_api\n# optional:\n# faster-whisper

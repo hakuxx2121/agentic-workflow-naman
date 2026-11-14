@@ -1,0 +1,8 @@
+{
+  "guild_id": "${DISCORD_GUILD_ID}",
+  "forum_channel_id": "${DISCORD_FORUM_CHANNEL_ID}",
+  "forum_channel_name": "trade-plans",
+  "forum_type_confirmed": false,
+  "webhook_id": "${DISCORD_WEBHOOK_ID}",
+  "note": "Copy this file to config.json and replace the placeholders with your Discord IDs. This file is not the webhook secret; set NDTL_WEBHOOK_URL in the environment."
+}

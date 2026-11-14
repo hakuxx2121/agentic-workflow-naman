@@ -1,0 +1,11 @@
+# cp terraform.tfvars.example terraform.tfvars   (terraform.tfvars is gitignored)
+region               = "us-east-1"
+lab_domain           = "appian.lab.example.com" # fake; must match LAB_DOMAIN for make-pki.sh
+allowed_client_cidrs = ["203.0.113.10/32"]      # replace with YOUR public IP: curl -s https://checkip.amazonaws.com
+identity_field       = "subject"                # subject | serial | dn | upn
+enable_crl           = true
+
+# Option 1 experiment (CloudFront viewer mTLS). Off by default.
+enable_cloudfront_mtls = false
+# cloudfront_mtls_alias        = "mtls.your-own-test-domain.example"
+# cloudfront_mtls_acm_cert_arn = "arn:aws:acm:us-east-1:111111111111:certificate/..."
