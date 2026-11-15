@@ -9,7 +9,7 @@
     "  after             - not 'ahead', AND over the prior_sessions sessions before the flip the stock had already moved",
     "                      in the new direction by more than prior_min_move (the creator flipped after the move, no follow-through).",
     "  no_follow_through - neither: the stock did not move the new way afterwards and had not moved that way before.",
-    "Moves are decimals: 0.01 = 1%. Working definition from Manager Bot; Naman has NOT confirmed it yet."
+    "Moves are decimals: 0.01 = 1%. A flip is tagged ahead, after, no follow-through, or pending, judged over 5 sessions, with any size of move counting, on raw price moves (not vs SPY)."
   ],
   "forward_sessions": 5,
   "_forward_sessions": "Sessions after the flip used for 'ahead'. 5 matches the 5D column.",

@@ -17,6 +17,8 @@ Tracks which stocks, ETFs and crypto tickers a set of trading YouTube channels d
 3. **Update the Page:** read `data/canvas.json` and edit that same Page by its `canvas_id` (ReadCanvas, then EditCanvas or WriteCanvas with that id). Swap in the new embedded data. Never create a new Page.
 4. **Report:** run `python3 errors_summary.py`; if it prints a line, use it as the morning note's error line (no output means no error line). Then write `reports/YYYY-MM-DD.md` with the top ~5 tickers by mention count over the last 7 days, giving consensus sentiment and one line each. Include a `## Code changes` section: if `reports/pending_code_changes.md` exists, copy its bullets into that section and then delete the pending file so they are not repeated the next night. If the file is missing, write `- none` (or describe any changes made during the run).
 
+The end-to-end nightly flow (fetch, analyze, dashboard `run_all.sh`, PC data sync) and the on-demand `backfill_channel.py` job are also described in [../../docs/agentic-workflow/pipelines.md](../../docs/agentic-workflow/pipelines.md).
+
 ## Summaries: own words only
 Summaries and price talk must be paraphrased. Never copy transcript passages; a few words at most.
 

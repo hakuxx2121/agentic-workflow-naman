@@ -1,7 +1,10 @@
 #!/usr/bin/env bash
-# Nightly refresh for Naman's Windows copy.
+# Nightly refresh for a local/Windows copy of the dashboard.
 #   nightly_sync.sh          -> check source freshness, run run_all.sh, stage changed data/*.json in .sync/, print their paths
 #   nightly_sync.sh --mark   -> record staged files as copied (call after every copy succeeded)
+#
+# Mentions source defaults to the sibling youtube-ticker-tracker data file.
+# Override with MENTIONS_JSON=/path/to/mentions.json if yours lives elsewhere.
 set -uo pipefail
 D="$(cd "$(dirname "$0")/.." && pwd)"; S=$D/.sync; H=$D/.synced_hashes
 SRC="${MENTIONS_JSON:-../youtube-ticker-tracker/data/mentions.json}"

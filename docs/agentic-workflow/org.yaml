@@ -38,16 +38,16 @@ teams:
     members:
       - id: business_logic_writer
         name: Business Logic Writer
-        role: Specs
+        role: Owns the spec
       - id: graph_bot
         name: Graph Bot
-        role: Builds
+        role: Builds the dashboard
       - id: dashboard_qa
         name: Dashboard QA
         role: Tests
       - id: github_bot
         name: GitHub Bot
-        role: Publishing
+        role: Publishes
       - id: tech_bot
         name: Tech Bot
         role: Infra

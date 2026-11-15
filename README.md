@@ -8,7 +8,7 @@ I am a DevSecOps engineer with 6+ years of experience (USDOL tenants on AWS and 
 
 This repository is a public portfolio of work I designed and operated with a fleet of Grok Bot agents: specialist bots for a TradingView indicator, YouTube ticker research, a localhost dashboard, Discord posting with audit guardrails, AWS labs, and an Android TV home launcher. I directed the builds and kept a standing rule that bots never place trades. Most of the source here was written by those agents under my direction.
 
-The layout of that fleet is the org chart above. How it is organized, and how to update the image, is in [docs/agentic-workflow/](docs/agentic-workflow/README.md).
+The layout of that fleet is the org chart above. How it is organized, and how to update the image, is in [docs/agentic-workflow/](docs/agentic-workflow/README.md). Ticker Tracker's nightly fetch, the dashboard refresh, the PC data sync, and the on-demand backfill job are in [docs/agentic-workflow/pipelines.md](docs/agentic-workflow/pipelines.md).
 
 Nothing in this repo is a trading recommendation. Secrets, webhook URLs, Terraform state, raw transcripts, personal holdings lists, signing keys, and generated certificates were removed or replaced with placeholders. Each project README has a section **What was removed and how to run it yourself** that lists what to fill in (environment variables, example config files, or generator scripts) if you clone the repo and want to run the project.
 
@@ -30,7 +30,7 @@ Nothing in this repo is a trading recommendation. Secrets, webhook URLs, Terrafo
 ```
 README.md
 .gitignore
-docs/agentic-workflow/    # org chart (org.yaml + rendered PNG)
+docs/agentic-workflow/    # org chart (org.yaml + rendered PNG) and pipeline notes
 projects/
   ndtl-gains-indicator/
   creator-calls-dashboard/
@@ -47,7 +47,7 @@ projects/
 Details, and the exact files or commands you need to restore a working local setup, are in each project's **What was removed and how to run it yourself** section:
 
 - [NDTL Gains](projects/ndtl-gains-indicator/README.md#what-was-removed-and-how-to-run-it-yourself) — large 1-minute CSVs and a few screenshots that showed a personal TradingView watchlist; the Pine source is included. No API keys required to use the indicator.
-- [Creator Calls dashboard](projects/creator-calls-dashboard/README.md#what-was-removed-and-how-to-run-it-yourself) — full mention dumps replaced with a trimmed sample; personal holdings lists emptied; some UI screenshots withheld because they showed holdings markers. Regenerate data with `scripts/run_all.sh`.
+- [Creator Calls dashboard](projects/creator-calls-dashboard/README.md#what-was-removed-and-how-to-run-it-yourself) — full mention dumps replaced with a trimmed sample; personal holdings lists replaced with a neutral example placeholder; some UI screenshots withheld because they showed holdings markers. Increment 7 screenshots that do not identify holdings are under `screenshots/`. Regenerate data with `scripts/run_all.sh`.
 - [YouTube ticker tracker](projects/youtube-ticker-tracker/README.md#what-was-removed-and-how-to-run-it-yourself) — raw transcripts and full mention history omitted. Run `fetch.py` and `analyze.py` with your own machine; no API key is required for yt-dlp.
 - [k3s dashboard hosting](projects/dashboard-k3s-ec2/README.md#what-was-removed-and-how-to-run-it-yourself) — no Terraform state or filled `tfvars`. Copy `terraform.tfvars.example`, use your AWS profile, then `terraform apply`.
 - [Discord posting guardrails](projects/discord-posting-guardrails/README.md#what-was-removed-and-how-to-run-it-yourself) — webhook URL, Discord IDs, and operational receipts replaced with placeholders. Copy `.env.example` and `poster/config.example.json`, create a Discord webhook, then dry-run.

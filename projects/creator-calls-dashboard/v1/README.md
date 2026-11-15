@@ -15,4 +15,4 @@ Then open http://localhost:8000/v1/
 
 A bullish call hits when the forward return is positive; a bearish call hits when it is negative. Calls without enough future bars are pending, not misses. Insights cards with n&lt;10 are flagged **too few calls to trust**. Non-significant results say **could be chance**.
 
-You can list ticker symbols in `js/app.js` (`HOLDINGS`) to isolate them with the **My holdings** filter. This copy ships with an empty list.
+You can list ticker symbols in `js/app.js` (`HOLDINGS`) to isolate them with the **My holdings** filter. This copy ships with `AAPL` as an example placeholder.

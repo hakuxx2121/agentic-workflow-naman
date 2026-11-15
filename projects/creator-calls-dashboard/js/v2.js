@@ -4,9 +4,42 @@
   const cfg = Object.assign({
     dataUrl: "./data/mentions.json", scoresUrl: "./data/scores.json",
     insightsUrl: "./data/insights.json", pricesUrl: "./data/prices.json",
-    holdings: [],
+    // Example placeholder only. Replace with your own symbols, or use [].
+    holdings: ["AAPL"],
   }, window.DASHBOARD_CONFIG || {});
-  const HOLDINGS = cfg.holdings || [];
+  const DEFAULT_HOLDINGS = (cfg.holdings || ["AAPL"]).map((t) => String(t).trim().toUpperCase()).filter(Boolean);
+  const LS_HOLD = "creatorCalls.holdings.v1";
+  const LS_LEGEND = "creatorCalls.legend.v1";
+  const LEGEND_KEYS = ["candles", "s20", "s50", "bullish", "bearish", "mixed", "flip"];
+  const LEGEND_DEFAULT = { candles: true, s20: true, s50: true, bullish: true, bearish: true, mixed: true, flip: true };
+  function loadHoldings() {
+    try {
+      const raw = localStorage.getItem(LS_HOLD);
+      if (raw == null) return DEFAULT_HOLDINGS.slice();
+      const arr = JSON.parse(raw);
+      if (!Array.isArray(arr)) return DEFAULT_HOLDINGS.slice();
+      const out = [];
+      arr.forEach((t) => { t = String(t || "").trim().toUpperCase(); if (t && !out.includes(t)) out.push(t); });
+      return out;
+    } catch (e) { return DEFAULT_HOLDINGS.slice(); }
+  }
+  function saveHoldings(list) {
+    try { localStorage.setItem(LS_HOLD, JSON.stringify(list)); } catch (e) {}
+  }
+  function loadLegend() {
+    try {
+      const raw = localStorage.getItem(LS_LEGEND);
+      if (raw == null) return { ...LEGEND_DEFAULT };
+      const o = JSON.parse(raw);
+      const out = { ...LEGEND_DEFAULT };
+      LEGEND_KEYS.forEach((k) => { if (typeof o[k] === "boolean") out[k] = o[k]; });
+      return out;
+    } catch (e) { return { ...LEGEND_DEFAULT }; }
+  }
+  function saveLegend(leg) {
+    try { localStorage.setItem(LS_LEGEND, JSON.stringify(leg)); } catch (e) {}
+  }
+  let HOLDINGS = loadHoldings();
   const SENT = ["bullish", "bearish", "mixed", "neutral", "unknown"];
   const COL = { bullish: "#3ecf8e", bearish: "#f06470", mixed: "#e0b34c", neutral: "#8a94a6", unknown: "#5f6a7d" };
   const GLYPH = { bullish: "▲", bearish: "▼", mixed: "◆", neutral: "●", unknown: "·" };
@@ -19,10 +52,13 @@
     mentions: [], scores: null, insights: null, prices: null, pricesErr: null,
     from: "", to: "", minDate: "", maxDate: "", channel: "", ticker: "", sentiment: "",
     holdings: false, basis: "raw", tab: "timeline", focus: null, search: "",
+    legend: loadLegend(),
     sort: { key: "date", dir: -1 }, scoreSort: { key: "date", dir: -1 }, splitSort: { key: "n5", dir: -1 },
   };
   const charts = {};
-  const lw = { chart: null, close: null, s20: null, s50: null, markers: null, bars: [], barIdx: {} };
+  const SMA20 = "#4ea1ff", SMA50 = "#b07cff";
+  const MARK_SCALE = 0.6;
+  const lw = { chart: null, candles: null, s20: null, s50: null, bars: [], barIdx: {}, skipLogged: false };
 
   /* ---------- helpers ---------- */
   const $ = (id) => document.getElementById(id);
@@ -166,17 +202,146 @@
       layout: { background: { type: "solid", color: "transparent" }, textColor: "#8b95a8", fontSize: 11, attributionLogo: true,
         fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' },
       grid: { vertLines: { visible: false }, horzLines: { color: "rgba(255,255,255,0.045)" } },
-      rightPriceScale: { borderColor: "#232a37", scaleMargins: { top: 0.12, bottom: 0.12 } },
-      timeScale: { borderColor: "#232a37", rightOffset: 3 },
+      rightPriceScale: { borderColor: "#232a37", scaleMargins: { top: 0.12, bottom: 0.12 }, autoScale: true },
+      timeScale: { borderColor: "#232a37", rightOffset: 4, fixLeftEdge: false, fixRightEdge: false },
       crosshair: { horzLine: { color: "#3a4356", labelBackgroundColor: "#232a37" }, vertLine: { color: "#3a4356", labelBackgroundColor: "#232a37" } },
     });
-    const common = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
-    lw.s50 = lw.chart.addSeries(L.LineSeries, { ...common, color: "#b18cff", lineWidth: 1, lineStyle: L.LineStyle.Dashed, title: "" });
-    lw.s20 = lw.chart.addSeries(L.LineSeries, { ...common, color: "#6f9bff", lineWidth: 1, lineStyle: L.LineStyle.Dashed });
-    lw.close = lw.chart.addSeries(L.LineSeries, { color: "#e9edf5", lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
-    lw.markers = L.createSeriesMarkers(lw.close, []);
     lw.chart.timeScale().subscribeVisibleLogicalRangeChange(() => requestAnimationFrame(drawOverlays));
     new ResizeObserver(() => requestAnimationFrame(drawOverlays)).observe($("chart"));
+    startOverlayWatch();
+  }
+  function mappingKey() {
+    if (!lw.chart || !lw.candles || !lw.bars.length) return "empty";
+    try {
+      const ts = lw.chart.timeScale();
+      const ps = lw.chart.priceScale("right");
+      const vr = ts.getVisibleLogicalRange();
+      const pr = ps && ps.getVisibleRange && ps.getVisibleRange();
+      const pane = lw.chart.paneSize ? lw.chart.paneSize(0) : { width: ts.width(), height: 0 };
+      const mid = lw.bars[Math.min(lw.bars.length - 1, Math.max(0, Math.round((vr && vr.from) || 0)))];
+      const last = lw.bars[lw.bars.length - 1];
+      const x = (d) => { const v = ts.timeToCoordinate(d); return v == null ? "n" : v.toFixed(2); };
+      const y = (price) => { const v = priceCoord(price); return v == null ? "n" : v.toFixed(2); };
+      return [
+        pane.width, pane.height, ts.width(),
+        vr ? vr.from : "", vr ? vr.to : "",
+        pr ? pr.from : "", pr ? pr.to : "",
+        mid ? x(mid.date) : "", last ? x(last.date) : "",
+        mid ? y(mid.high) : "", mid ? y(mid.low) : "", last ? y(last.close) : "",
+        state.legend.candles, state.legend.s20, state.legend.s50,
+        state.legend.bullish, state.legend.bearish, state.legend.mixed, state.legend.flip,
+        state.focus, (lw.chartMarks || []).length,
+      ].join("|");
+    } catch (e) { return "err"; }
+  }
+  function startOverlayWatch() {
+    if (lw.overlayWatch) return;
+    lw.overlayWatch = true;
+    const tick = () => {
+      if (!lw.overlayWatch) return;
+      requestAnimationFrame(tick);
+      if (document.hidden) return;
+      if (state.tab && state.tab !== "timeline") return;
+      const key = mappingKey();
+      if (key !== lw.mapKey) {
+        lw.mapKey = key;
+        drawOverlays();
+      }
+    };
+    requestAnimationFrame(tick);
+  }
+  function viewSnapshot() {
+    if (!lw.chart) return null;
+    const ts = lw.chart.timeScale();
+    const ps = lw.chart.priceScale("right");
+    let auto = true, pr = null;
+    try { auto = !!(ps.options() && ps.options().autoScale); } catch (e) {}
+    try { pr = ps.getVisibleRange ? ps.getVisibleRange() : null; } catch (e) {}
+    return {
+      vr: ts.getVisibleLogicalRange(),
+      pr: pr && pr.from != null && pr.to != null ? { from: pr.from, to: pr.to } : null,
+      auto,
+    };
+  }
+  function restoreView(snap) {
+    if (!lw.chart || !snap) return;
+    const ts = lw.chart.timeScale();
+    if (snap.vr) {
+      try { ts.setVisibleLogicalRange({ from: snap.vr.from, to: snap.vr.to }); } catch (e) {}
+    }
+    if (!snap.auto && snap.pr) {
+      try { lw.chart.priceScale("right").setVisibleRange({ from: snap.pr.from, to: snap.pr.to }); } catch (e) {}
+    }
+  }
+  function dropSeries() {
+    if (!lw.chart) return;
+    for (const k of ["s20", "s50", "candles"]) {
+      if (lw[k]) { try { lw.chart.removeSeries(lw[k]); } catch (e) {} lw[k] = null; }
+    }
+  }
+  function scaleIf(layer) {
+    return (original) => (state.legend[layer] ? original() : null);
+  }
+  function attachSeries() {
+    if (!lw.chart || typeof LightweightCharts === "undefined") return;
+    const L = LightweightCharts;
+    const common = { priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false };
+    const solid = L.LineStyle.Solid;
+    lw.s50 = lw.chart.addSeries(L.LineSeries, { ...common, color: SMA50, lineWidth: 2, lineStyle: solid, visible: !!state.legend.s50, autoscaleInfoProvider: scaleIf("s50") });
+    lw.s20 = lw.chart.addSeries(L.LineSeries, { ...common, color: SMA20, lineWidth: 2, lineStyle: solid, visible: !!state.legend.s20, autoscaleInfoProvider: scaleIf("s20") });
+    lw.candles = lw.chart.addSeries(L.CandlestickSeries, {
+      upColor: COL.bullish, downColor: COL.bearish,
+      borderUpColor: COL.bullish, borderDownColor: COL.bearish,
+      wickUpColor: COL.bullish, wickDownColor: COL.bearish,
+      priceLineVisible: false, lastValueVisible: true,
+      visible: !!state.legend.candles,
+      autoscaleInfoProvider: scaleIf("candles"),
+    });
+  }
+  function setLegendSeries() {
+    if (lw.s20) lw.s20.applyOptions({ visible: !!state.legend.s20 });
+    if (lw.s50) lw.s50.applyOptions({ visible: !!state.legend.s50 });
+    if (lw.candles) lw.candles.applyOptions({ visible: !!state.legend.candles });
+    syncLegendButtons();
+  }
+  function applyLegendVisibility() {
+    // Keep the user's time range and any hand-set price scale (I7-VIEW-01).
+    const snap = viewSnapshot();
+    setLegendSeries();
+    restoreView(snap);
+    requestAnimationFrame(() => {
+      restoreView(snap);
+      lw.mapKey = mappingKey();
+      drawOverlays();
+    });
+  }
+  function syncLegendButtons() {
+    document.querySelectorAll("#chart-legend .leg-btn").forEach((b) => {
+      const on = !!state.legend[b.dataset.layer];
+      b.setAttribute("aria-pressed", String(on));
+    });
+  }
+  function candleData(bars) {
+    const out = [];
+    let skipped = 0;
+    for (const b of bars) {
+      const o = b.open, h = b.high, l = b.low, c = b.close;
+      if (![o, h, l, c].every((x) => typeof x === "number" && Number.isFinite(x))) { skipped++; continue; }
+      out.push({ time: b.date, open: o, high: h, low: l, close: c });
+    }
+    if (skipped && !lw.skipLogged) {
+      console.info(`Skipped ${skipped} price bar(s) missing open, high or low`);
+      lw.skipLogged = true;
+    }
+    return out;
+  }
+  function priceCoord(price) {
+    return lw.candles ? lw.candles.priceToCoordinate(price) : null;
+  }
+  function enableAutoScale() {
+    if (!lw.chart) return;
+    try { lw.chart.priceScale("right").applyOptions({ autoScale: true, scaleMargins: { top: 0.12, bottom: 0.12 } }); } catch (e) {}
+    if (lw.candles) { try { lw.candles.priceScale().applyOptions({ autoScale: true }); } catch (e) {} }
   }
   function snapDate(c) {
     // the bar on or before the video date (what the creator could see)
@@ -186,6 +351,7 @@
   function focusCalls() { return fCalls({ ignoreTicker: true }).filter((c) => c.ticker === state.focus); }
 
   function renderFocus() {
+    closeCallPop();
     const t = state.focus;
     const calls = focusCalls();
     const all = allCalls().filter((c) => c.ticker === t && inFilters(c, { ignoreTicker: true, ignoreSent: true }));
@@ -213,25 +379,47 @@
 
     ensureChart();
     if (lw.chart) {
-      lw.close.setData(bars.map((b) => ({ time: b.date, value: b.close })));
-      lw.s20.setData(smaLine(bars, 20));
-      lw.s50.setData(smaLine(bars, 50));
-      // aggregate ▲/▼ per bar so stacked markers stay readable
-      const agg = new Map();
-      calls.filter((c) => c.directional).forEach((c) => {
-        const d = snapDate(c); if (!d) return;
-        const k = `${d}|${c.sentiment}`; agg.set(k, (agg.get(k) || 0) + 1);
-      });
-      const mk = Array.from(agg.entries()).map(([k, n]) => {
-        const [d, s] = k.split("|"); const bull = s === "bullish";
-        return { time: d, position: bull ? "belowBar" : "aboveBar", shape: bull ? "arrowUp" : "arrowDown", color: COL[s], text: n > 1 ? `${GLYPH[s]}${n}` : GLYPH[s], size: 1 };
-      }).sort((a, b) => a.time < b.time ? -1 : a.time > b.time ? 1 : (a.position === "aboveBar" ? 1 : -1));
-      lw.markers.setMarkers(mk);
-      const dates = calls.map((c) => snapDate(c)).filter(Boolean).sort();
-      if (bars.length) {
-        const fi = dates.length ? lw.barIdx[dates[0]] : bars.length - 40;
-        const from = bars[Math.max(0, fi - 20)].date;
-        lw.chart.timeScale().setVisibleRange({ from, to: bars[bars.length - 1].date });
+      // Always drop and rebuild series so a prior zoom or price-scale drag cannot stick.
+      dropSeries();
+      attachSeries();
+      if (!bars.length) {
+        lw.s20.setData([]); lw.s50.setData([]); lw.candles.setData([]);
+        lw.chartMarks = [];
+        setLegendSeries();
+      } else {
+        lw.candles.setData(candleData(bars));
+        lw.s20.setData(smaLine(bars, 20));
+        lw.s50.setData(smaLine(bars, 50));
+        setLegendSeries();
+        const agg = new Map();
+        calls.filter((c) => c.sentiment === "bullish" || c.sentiment === "bearish" || c.sentiment === "mixed").forEach((c) => {
+          const d = snapDate(c); if (!d) return;
+          const k = `${d}|${c.sentiment}`; agg.set(k, (agg.get(k) || 0) + 1);
+        });
+        lw.chartMarks = Array.from(agg.entries()).map(([k, n]) => {
+          const [d, s] = k.split("|");
+          return { date: d, sentiment: s, n };
+        }).sort((a, b) => a.date < b.date ? -1 : a.date > b.date ? 1 : (a.sentiment < b.sentiment ? -1 : 1));
+        const dates = calls.map((c) => snapDate(c)).filter(Boolean).sort();
+        const fi = dates.length && dates[0] in lw.barIdx ? lw.barIdx[dates[0]] : Math.max(0, bars.length - 40);
+        const fromIdx = Math.max(0, fi - 20);
+        const ts = lw.chart.timeScale();
+        const applyView = () => {
+          if (!lw.chart) return;
+          enableAutoScale();
+          const vr = ts.getVisibleLogicalRange();
+          if (!vr) return;
+          const x0 = ts.timeToCoordinate(bars[fromIdx].date);
+          const minPad = 24;
+          if (x0 != null && x0 < minPad) {
+            const plotW = ts.width() || 1;
+            const barPx = plotW / Math.max(0.001, vr.to - vr.from);
+            ts.setVisibleLogicalRange({ from: vr.from - (minPad - Math.max(0, x0)) / barPx, to: vr.to });
+          }
+        };
+        enableAutoScale();
+        ts.setVisibleLogicalRange({ from: fromIdx - 0.6, to: bars.length - 1 + 0.2 });
+        requestAnimationFrame(() => { applyView(); requestAnimationFrame(() => { applyView(); drawOverlays(); }); });
       }
     }
     const miss = calls.filter((c) => !c.has_price).length;
@@ -255,25 +443,164 @@
     return b > a ? 30 + (Date.parse(date) - a) / (b - a) * (plotW - 60) : plotW / 2;
   }
 
+  function laneTipText(c) {
+    const bits = [c.channel, fmtD(c.date), c.sentiment];
+    if (c.is_flip && c.flip_tag) bits.push(TAG_LABEL[c.flip_tag] || c.flip_tag);
+    return bits.filter(Boolean).join(" · ");
+  }
+  function stripAxisTicks() {
+    if (!lw.chart || !lw.bars.length) return [];
+    const ts = lw.chart.timeScale();
+    const vr = ts.getVisibleRange();
+    if (!vr) return [];
+    const vis = lw.bars.filter((b) => b.date >= vr.from && b.date <= vr.to);
+    if (!vis.length) return [];
+    const xOfBar = (b) => ts.timeToCoordinate(b.date);
+    const x0 = xOfBar(vis[0]), x1 = xOfBar(vis[vis.length - 1]);
+    if (x0 == null || x1 == null) return [];
+    const minPx = 64;
+    const maxN = Math.max(2, Math.floor(Math.abs(x1 - x0) / minPx) + 1);
+    const n = Math.min(vis.length, maxN);
+    const idxs = [];
+    if (n <= 1) idxs.push(0);
+    else {
+      for (let k = 0; k < n; k++) idxs.push(Math.round(k * (vis.length - 1) / (n - 1)));
+    }
+    const seen = new Set();
+    const ticks = [];
+    idxs.forEach((i) => {
+      if (seen.has(i)) return; seen.add(i);
+      const b = vis[i];
+      const x = xOfBar(b);
+      if (x == null) return;
+      const day = +b.date.slice(8, 10);
+      const mon = MON[+b.date.slice(5, 7) - 1];
+      ticks.push({ date: b.date, x, label: day === 1 ? mon : `${mon} ${day}` });
+    });
+    return ticks;
+  }
+  function axisLabelAnchor(x, plotW) {
+    if (x < 18) return { anchor: "start", x: Math.max(0, x) };
+    if (x > plotW - 18) return { anchor: "end", x: Math.min(plotW, x) };
+    return { anchor: "middle", x };
+  }
+  function arrowPath(up, h) {
+    const w = h * 0.72, stem = h * 0.28, head = h * 0.55;
+    if (up) return `M 0 ${-h} L ${-w} ${-h + head} L ${-stem} ${-h + head} L ${-stem} ${0} L ${stem} ${0} L ${stem} ${-h + head} L ${w} ${-h + head} Z`;
+    return `M 0 ${h} L ${-w} ${h - head} L ${-stem} ${h - head} L ${-stem} ${0} L ${stem} ${0} L ${stem} ${h - head} L ${w} ${h - head} Z`;
+  }
+  function diamondPath(h) {
+    const s = h / 2;
+    return `M 0 ${-s} L ${s} 0 L 0 ${s} L ${-s} 0 Z`;
+  }
   function drawOverlays() {
-    const svg = $("chart-overlay"), lanes = $("lanes-svg");
-    if (!state.focus) { svg.innerHTML = ""; lanes.innerHTML = ""; return; }
+    const svg = $("chart-overlay"), lanes = $("lanes-svg"), axisSvg = $("lane-axis-svg");
+    const clearAxis = () => { if (axisSvg) { axisSvg.innerHTML = ""; axisSvg.removeAttribute("width"); } };
+    if (!state.focus) { svg.innerHTML = ""; lanes.innerHTML = ""; clearAxis(); hideLaneTip(); return; }
     const calls = focusCalls();
     const plotW = lw.chart ? lw.chart.timeScale().width() : $("lanes").clientWidth;
-    // rings around flips on the price line
-    let ring = "";
-    if (lw.chart && lw.bars.length) {
-      const seen = new Set();
-      calls.filter((c) => c.is_flip).forEach((c) => {
-        const d = snapDate(c); if (!d || seen.has(d)) return; seen.add(d);
-        const x = lw.chart.timeScale().timeToCoordinate(d);
-        const y = lw.close.priceToCoordinate(lw.bars[lw.barIdx[d]].close);
-        if (x == null || y == null || x < 0 || x > plotW) return;
-        ring += `<circle cx="${x}" cy="${y}" r="9" fill="none" stroke="${FLIP}" stroke-width="2"/>`;
+    const chartW = $("chart") ? $("chart").clientWidth : plotW;
+    let overlay = "";
+    const markH = 12 * MARK_SCALE;
+    const ringR = 9 * MARK_SCALE;
+    if (lw.chart && lw.bars.length && lw.candles) {
+      const ts = lw.chart.timeScale();
+      const GAP = 6, STACK = 3, labPx = 8;
+      const pane = (lw.chart.paneSize ? lw.chart.paneSize(0) : null) || { width: plotW, height: ($("chart") && $("chart").clientHeight) || 0 };
+      const paneH = pane.height || 0;
+      overlay += `<defs><clipPath id="plot-clip"><rect x="0" y="0" width="${plotW}" height="${paneH}"></rect></clipPath></defs>`;
+      overlay += `<g clip-path="url(#plot-clip)">`;
+      const vr = ts.getVisibleLogicalRange();
+      const barW = (vr && Number.isFinite(vr.to - vr.from) && (vr.to - vr.from) !== 0)
+        ? Math.abs((ts.width() || plotW) / (vr.to - vr.from)) : 6;
+      const visBars = new Set();
+      (lw.chartMarks || []).forEach((m) => { if (state.legend[m.sentiment]) visBars.add(m.date); });
+      visBars.forEach((date) => {
+        const i = lw.barIdx[date]; if (i == null) return;
+        const b = lw.bars[i];
+        const x = ts.timeToCoordinate(date);
+        const hy = priceCoord(b.high), ly = priceCoord(b.low), oy = priceCoord(b.open), cy = priceCoord(b.close);
+        if (x == null || hy == null || ly == null) return;
+        const top = Math.min(hy, ly), h = Math.abs(ly - hy) || 1;
+        overlay += `<rect class="chart-candle-box" data-date="${esc(date)}" x="${x - barW / 2}" y="${top}" width="${barW}" height="${h}" fill="none" pointer-events="none"/>`;
+        if (oy != null && cy != null) {
+          const bt = Math.min(oy, cy), bh = Math.abs(cy - oy) || 1;
+          const bodyW = Math.max(1, barW * 0.7);
+          overlay += `<rect class="chart-candle-body" data-date="${esc(date)}" x="${x - bodyW / 2}" y="${bt}" width="${bodyW}" height="${bh}" fill="none" pointer-events="none"/>`;
+        }
       });
+      const byDate = new Map();
+      (lw.chartMarks || []).forEach((m) => {
+        if (!state.legend[m.sentiment]) return;
+        if (!byDate.has(m.date)) byDate.set(m.date, {});
+        byDate.get(m.date)[m.sentiment] = m;
+      });
+      const addMark = (m, x, wickY, originY, tipLocalY, path, hitCy, labelY) => {
+        const tipY = originY + tipLocalY;
+        const gap = Math.abs(tipY - wickY);
+        const label = m.n > 1 ? `${GLYPH[m.sentiment]}${m.n}` : "";
+        overlay += `<g class="chart-mark" tabindex="0" role="button" data-kind="${esc(m.sentiment)}" data-date="${esc(m.date)}" data-n="${m.n}" data-gap="${gap.toFixed(2)}" data-bar-x="${x}" data-wick-y="${wickY}" data-tip-y="${tipY}" transform="translate(${x},${originY})">`;
+        overlay += `<circle r="11" cx="0" cy="${hitCy}" fill="transparent"/>`;
+        overlay += `<path class="chart-mark-shape" d="${path}" fill="${COL[m.sentiment]}"></path>`;
+        if (label) overlay += `<text x="0" y="${labelY}" text-anchor="middle" font-size="8" fill="${COL[m.sentiment]}">${esc(label)}</text>`;
+        overlay += `</g>`;
+        overlay += `<line class="chart-mark-tip" data-kind="${esc(m.sentiment)}" data-date="${esc(m.date)}" x1="${x}" x2="${x}" y1="${tipY}" y2="${tipY}"/>`;
+        overlay += `<line class="chart-wick-end" data-kind="${esc(m.sentiment)}" data-date="${esc(m.date)}" x1="${x}" x2="${x}" y1="${wickY}" y2="${wickY}"/>`;
+        return gap;
+      };
+      byDate.forEach((kinds, date) => {
+        const i = lw.barIdx[date]; if (i == null) return;
+        const b = lw.bars[i];
+        const x = ts.timeToCoordinate(date);
+        if (x == null || x < -8 || x > plotW + 8) return;
+        const lowY = priceCoord(b.low), highY = priceCoord(b.high);
+        // Below the low: bullish. Tip 6px under the wick.
+        if (kinds.bullish && lowY != null) {
+          const m = kinds.bullish;
+          const tipLocal = -markH;
+          const originY = (lowY + GAP) - tipLocal;
+          const hitCy = tipLocal + 11; // entirely on the far side of the tip
+          addMark(m, x, lowY, originY, tipLocal, arrowPath(true, markH), hitCy, 9);
+        }
+        // Above the high: bearish first (nearest), then mixed beyond it.
+        let aboveClear = (highY != null) ? highY - GAP : null; // y of the next available tip (or diamond near-edge)
+        if (kinds.bearish && highY != null) {
+          const m = kinds.bearish;
+          const tipLocal = markH;
+          const originY = (highY - GAP) - tipLocal;
+          const hitCy = tipLocal - 11;
+          addMark(m, x, highY, originY, tipLocal, arrowPath(false, markH), hitCy, -4);
+          // extent away from the candle: path base at originY, label further up
+          const labelTop = m.n > 1 ? (originY - 4 - labPx) : originY;
+          aboveClear = Math.min(originY, labelTop) - STACK;
+        }
+        if (kinds.mixed && highY != null) {
+          const m = kinds.mixed;
+          const s = markH / 2; // bottom vertex at +s, top at -s
+          const tipLocal = s; // nearest-to-wick vertex
+          const desiredTip = (kinds.bearish && aboveClear != null) ? aboveClear : (highY - GAP);
+          const originY = desiredTip - tipLocal;
+          const hitCy = tipLocal - 11;
+          addMark(m, x, highY, originY, tipLocal, diamondPath(markH), hitCy, -(s + 5));
+        }
+      });
+      if (state.legend.flip) {
+        const seen = new Set();
+        calls.filter((c) => c.is_flip).forEach((c) => {
+          const d = snapDate(c); if (!d || seen.has(d)) return; seen.add(d);
+          const i = lw.barIdx[d]; if (i == null) return;
+          const x = ts.timeToCoordinate(d);
+          const y = priceCoord(lw.bars[i].close);
+          if (x == null || y == null || x < 0 || x > plotW) return;
+          overlay += `<g class="chart-flip-ring" tabindex="0" role="button" data-kind="flip" data-date="${esc(d)}" transform="translate(${x},${y})">`;
+          overlay += `<circle r="11" fill="transparent"/>`;
+          overlay += `<circle r="${ringR}" fill="none" stroke="${FLIP}" stroke-width="1.2"/>`;
+          overlay += `</g>`;
+        });
+      }
+      overlay += `</g>`;
     }
-    svg.innerHTML = ring;
-    // swimlanes: one row per creator
+    svg.innerHTML = overlay;
     const byCh = new Map();
     calls.slice().sort((a, b) => (a.date || "").localeCompare(b.date || "") || a.i - b.i).forEach((c) => {
       if (!c.date) return;
@@ -281,38 +608,148 @@
       byCh.get(c.channel).push(c);
     });
     const chans = Array.from(byCh.keys()).sort((a, b) => byCh.get(b).length - byCh.get(a).length || a.localeCompare(b));
-    const rowH = 40, top = 6;
+    const sparse = calls.length <= 3;
+    const rowH = sparse ? 44 : 40;
+    const top = 6;
     const ds = calls.map((c) => c.date).filter(Boolean).sort();
     const range = ds.length ? [ds[0], ds[ds.length - 1]] : null;
     let out = "";
     chans.forEach((ch, r) => {
-      const y = top + r * rowH + 22;
-      out += `<text x="2" y="${y - 11}" fill="#8b95a8" font-size="11">${esc(ch)} <tspan fill="#5f6a7d">(${byCh.get(ch).length})</tspan></text>`;
-      out += `<line x1="0" x2="${plotW}" y1="${y}" y2="${y}" stroke="#1d2330"/>`;
+      const y = top + r * rowH + (sparse ? 18 : 22);
+      out += `<text x="2" y="${y - 12}" fill="#8b95a8" font-size="11">${esc(ch)} <tspan fill="#5f6a7d">(${byCh.get(ch).length})</tspan></text>`;
+      out += `<line class="lane-base" x1="0" x2="${plotW}" y1="${y}" y2="${y}" stroke="${sparse ? "#455266" : "#2a3344"}" stroke-width="1"/>`;
       const pts = byCh.get(ch).map((c) => ({ c, x: xOf(c.date, plotW, range) })).filter((p) => p.x != null);
       pts.forEach((p, k) => {
-        const nx = k + 1 < pts.length ? pts[k + 1].x : plotW;
-        const x0 = Math.max(0, Math.min(plotW, p.x)), x1 = Math.max(0, Math.min(plotW, nx));
-        if (x1 > x0) out += `<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="${COL[p.c.sentiment] || COL.unknown}" stroke-width="3" stroke-opacity="${k + 1 < pts.length ? 0.55 : 0.22}"/>`;
+        if (k + 1 >= pts.length) return;
+        const x0 = Math.max(0, Math.min(plotW, p.x)), x1 = Math.max(0, Math.min(plotW, pts[k + 1].x));
+        if (x1 > x0) out += `<line x1="${x0}" x2="${x1}" y1="${y}" y2="${y}" stroke="${COL[p.c.sentiment] || COL.unknown}" stroke-width="3" stroke-opacity="0.55"/>`;
       });
-      let lastFlipX = null, lastBelow = false;
       pts.forEach((p) => {
-        if (p.x < 0 || p.x > plotW) return;
+        if (p.x < -8 || p.x > plotW + 8) return;
         const s = p.c.sentiment;
-        out += `<text x="${p.x}" y="${y + 4}" text-anchor="middle" font-size="12" fill="${COL[s] || COL.unknown}"><title>${esc(`${p.c.date} · ${s}${p.c.summary ? " · " + p.c.summary : ""}`)}</title>${GLYPH[s] || "·"}</text>`;
-        if (p.c.is_flip) {
-          out += `<circle cx="${p.x}" cy="${y}" r="8.5" fill="none" stroke="${FLIP}" stroke-width="1.6"/>`;
-          const lab = SHORT_TAG[p.c.flip_tag] || "flip";
-          // alternate above/below when flips sit close together so tags don't collide
-          const below = lastFlipX != null && p.x - lastFlipX < 64 && !lastBelow;
-          lastBelow = below; lastFlipX = p.x;
-          out += `<text x="${Math.min(plotW - 4, Math.max(4, p.x))}" y="${below ? y + 20 : y - 11}" text-anchor="${p.x > plotW - 40 ? "end" : p.x < 40 ? "start" : "middle"}" font-size="10" fill="${FLIP}"><title>${esc(TAG_LABEL[p.c.flip_tag] || "flip")}</title>⟲ ${esc(lab)}</text>`;
+        const tip = laneTipText(p.c);
+        out += `<g class="lane-mark" tabindex="0" role="img" data-tip="${esc(tip)}" transform="translate(${p.x},${y})">`;
+        out += `<circle r="11" fill="transparent"/>`;
+        out += `<text text-anchor="middle" dominant-baseline="central" font-size="16" fill="${COL[s] || COL.unknown}">${GLYPH[s] || "·"}</text>`;
+        if (p.c.is_flip) out += `<circle r="10" fill="none" stroke="${FLIP}" stroke-width="1.6"/>`;
+        out += `</g>`;
+        if (sparse) {
+          const lab = fmtD(p.c.date);
+          const a = axisLabelAnchor(p.x, plotW);
+          out += `<text class="lane-date" x="${a.x}" y="${y + 18}" text-anchor="${a.anchor}" font-size="10" fill="#8b95a8">${esc(lab)}</text>`;
         }
       });
     });
-    lanes.setAttribute("height", String(top + chans.length * rowH + 8));
+    const contentBottom = top + Math.max(chans.length, 1) * rowH + (sparse ? 6 : 2);
+    lanes.setAttribute("width", String(chartW));
+    lanes.setAttribute("height", String(contentBottom));
+    lanes.setAttribute("viewBox", `0 0 ${chartW} ${contentBottom}`);
+    lanes.style.width = chartW + "px";
+    lanes.style.height = contentBottom + "px";
     lanes.innerHTML = out || `<text x="4" y="20" fill="#5f6a7d" font-size="12">No calls in view.</text>`;
+
+    const ticks = stripAxisTicks();
+    const approxW = (label) => label.length * 6.4 + 6;
+    const layoutTick = (t) => {
+      const w = approxW(t.label);
+      let anchor = "middle", lx = t.x, left = t.x - w / 2, right = t.x + w / 2;
+      if (left < 1) { anchor = "start"; lx = Math.max(0, t.x); left = lx; right = lx + w; }
+      else if (right > plotW - 1) { anchor = "end"; lx = Math.min(plotW, t.x); right = lx; left = lx - w; }
+      return { ...t, anchor, lx, left, right, w };
+    };
+    const visTicks = ticks.filter((t) => t.x >= 0 && t.x <= plotW).map(layoutTick);
+    const chosen = visTicks.slice();
+    const axisH = 28;
+    let axisOut = `<line x1="0" x2="${plotW}" y1="10" y2="10" stroke="#2d3545"/>`;
+    chosen.forEach((t) => {
+      axisOut += `<line class="strip-tick-line" data-date="${esc(t.date)}" data-x="${t.x}" x1="${t.x}" x2="${t.x}" y1="10" y2="16" stroke="#5f6a7d"/>`;
+      axisOut += `<text class="strip-tick" data-date="${esc(t.date)}" x="${t.lx}" y="26" text-anchor="${t.anchor}" font-size="11" fill="#8b95a8">${esc(t.label)}</text>`;
+      // Invisible alignment mark on the chart overlay at the same date-to-x mapping.
+      overlay += `<line class="chart-date-x" data-date="${esc(t.date)}" x1="${t.x}" x2="${t.x}" y1="0" y2="0"/>`;
+    });
+    svg.innerHTML = overlay;
+    stampOverlayView(svg);
+    reanchorCallPop();
+    lw.mapKey = mappingKey();
+    if (axisSvg) {
+      axisSvg.setAttribute("width", String(chartW));
+      axisSvg.setAttribute("height", String(axisH));
+      axisSvg.setAttribute("viewBox", `0 0 ${chartW} ${axisH}`);
+      axisSvg.style.width = chartW + "px";
+      axisSvg.style.height = axisH + "px";
+      axisSvg.innerHTML = axisOut;
+    }
   }
+  function stampOverlayView(svg) {
+    if (!svg || !lw.chart) return;
+    try {
+      const snap = viewSnapshot();
+      if (snap && snap.vr) {
+        svg.setAttribute("data-logical-from", String(snap.vr.from));
+        svg.setAttribute("data-logical-to", String(snap.vr.to));
+      }
+      if (snap && snap.pr) {
+        svg.setAttribute("data-price-from", String(snap.pr.from));
+        svg.setAttribute("data-price-to", String(snap.pr.to));
+      } else {
+        svg.removeAttribute("data-price-from");
+        svg.removeAttribute("data-price-to");
+      }
+      if (snap) svg.setAttribute("data-autoscale", String(!!snap.auto));
+    } catch (e) {}
+  }
+  function reanchorCallPop() {
+    if (!popState || !popState.key) return;
+    const pop = $("call-pop");
+    if (!pop || pop.hidden) return;
+    const parts = popState.key.split("|");
+    const kind = parts[0], date = parts.slice(1).join("|");
+    const el = document.querySelector(kind === "flip"
+      ? `.chart-flip-ring[data-date="${CSS.escape(date)}"]`
+      : `.chart-mark[data-kind="${CSS.escape(kind)}"][data-date="${CSS.escape(date)}"]`);
+    if (el) placeCallPop(el);
+    else closeCallPop();
+  }
+  function hideLaneTip() {
+    const tip = $("lane-tip");
+    if (tip) { tip.hidden = true; tip.textContent = ""; }
+  }
+  function showLaneTip(el, ev) {
+    const tip = $("lane-tip");
+    if (!tip || !el || !el.dataset.tip) return;
+    tip.textContent = el.dataset.tip;
+    tip.hidden = false;
+    tip.style.left = "0px"; tip.style.top = "0px";
+    const er = el.getBoundingClientRect();
+    const tw = tip.offsetWidth, th = tip.offsetHeight;
+    let left = er.left + er.width / 2 - tw / 2;
+    left = Math.min(Math.max(8, left), Math.max(8, window.innerWidth - tw - 8));
+    let top = er.top - th - 8;
+    if (top < 8) top = er.bottom + 8;
+    tip.style.left = left + "px";
+    tip.style.top = top + "px";
+  }
+  function bindLaneTips() {
+    const host = $("lanes");
+    if (!host || host.dataset.tipBound) return;
+    host.dataset.tipBound = "1";
+    const markFrom = (e) => e.target.closest && e.target.closest(".lane-mark");
+    host.addEventListener("pointerover", (e) => { const m = markFrom(e); if (m) showLaneTip(m, e); });
+    host.addEventListener("pointerout", (e) => { if (!host.contains(e.relatedTarget)) hideLaneTip(); const m = markFrom(e); if (m && !m.contains(e.relatedTarget)) hideLaneTip(); });
+    host.addEventListener("click", (e) => { const m = markFrom(e); if (m) { e.preventDefault(); showLaneTip(m, e); } else hideLaneTip(); });
+    host.addEventListener("focusin", (e) => { const m = markFrom(e); if (m) showLaneTip(m, e); });
+    host.addEventListener("focusout", (e) => { if (!host.contains(e.relatedTarget)) hideLaneTip(); });
+  }
+  function updateCallsScrollCue() {
+    const sc = $("calls-scroll"), wrap = $("calls-scroll-wrap"), cue = $("calls-scroll-cue");
+    if (!sc || !wrap) return;
+    const overflow = sc.scrollWidth - sc.clientWidth > 2;
+    const remain = sc.scrollWidth - sc.clientWidth - sc.scrollLeft;
+    const more = overflow && remain > 2;
+    wrap.classList.toggle("more-right", more);
+    if (cue) cue.hidden = !more;
+  }
+
 
   function renderCallsTable(calls) {
     const rows = calls.slice().sort((a, b) => (b.date || "").localeCompare(a.date || "") || b.i - a.i);
@@ -327,6 +764,7 @@
         <td class="r">${retCell(c.ex_td, c.has_price && c.pending_td)}</td>
         <td>${maBadge(c)}</td>
       </tr>`).join("") || `<tr><td colspan="8" class="dim">No calls match these filters.</td></tr>`;
+    requestAnimationFrame(updateCallsScrollCue);
   }
 
   function renderTimeline() { renderList(); renderFocus(); }
@@ -436,16 +874,12 @@
   }
 
   /* ---------- Flips ---------- */
+  const FLIP_RULE = "A flip is tagged ahead, after, no follow-through, or pending, judged over 5 sessions, with any size of move counting, on raw price moves (not vs SPY).";
   function flipDefText(short) {
     const f = (state.scores && state.scores.flip_config) || {};
     const N = f.forward_sessions ?? 5, P = f.prior_sessions ?? 5;
-    const am = f.ahead_min_move ? ` by more than ${pct(f.ahead_min_move, 1)}` : "";
-    const pm = f.prior_min_move ? ` by more than ${pct(f.prior_min_move, 1)}` : "";
-    const sp = f.vs_spy ? " (measured vs SPY)" : "";
     if (short) return `Ahead = moved the new way in the ${N} sessions after; after = it had already moved that way in the ${P} sessions before and then didn’t follow through.`;
-    return `A flip is the same creator switching a ticker between ▲ bullish and ▼ bearish. Tags${sp}: ahead of move = over the ${N} sessions after the flip the stock moved the new way${am}. ` +
-      `After the move = it did not, but in the ${P} sessions before the flip it had already moved that way${pm} (the creator flipped late). No follow-through = neither. ` +
-      `Pending = fewer than ${N} sessions of prices yet. Working definition, not yet confirmed; settings live in scripts/flip_config.json.`;
+    return FLIP_RULE;
   }
   function renderFlips() {
     $("flip-def").textContent = flipDefText(false);
@@ -462,7 +896,8 @@
       ["Ahead of move", String(cnt("ahead")), "moved the new way after", 99],
       ["After the move", String(cnt("after")), "had already moved; no follow-through", 99],
       ["No follow-through", String(cnt("no_follow_through")), "didn’t move the new way either side", 99],
-      ["Pending", String(cnt("pending") + cnt("no_price")), cnt("no_price") ? `${cnt("no_price")} with no price data` : "not enough sessions yet", 99],
+      ["Pending", String(cnt("pending")), "not enough sessions yet", 99],
+      ["No price data", String(cnt("no_price")), "no daily prices to judge the flip", 99],
       ["Flip hit rate, next session / 5 sessions", `${n1.length ? pct(h1 / n1.length) : "—"} / ${n5.length ? pct(h5 / n5.length) : "—"}`, `n=${n1.length} / n=${n5.length}`, n5.length],
     ].map(([l, v, h, n]) => `<div class="panel"><p class="label">${l}</p><p class="value">${v}</p><p class="hint">${h}${n < THIN ? ' · <span class="thin">too few to trust</span>' : ""}</p></div>`).join("");
     $("flip-count").textContent = `${flips.length} flips`;
@@ -582,27 +1017,249 @@
     document.querySelectorAll(".tab-panel").forEach((p) => p.classList.toggle("active", p.id === `tab-${tab}`));
     renderActive();
   }
+  const TABS = ["timeline", "creators", "flips", "mentions", "reaction", "insights"];
+  let writingHash = false;
   function focusTicker(t) { state.focus = t; if (state.ticker && state.ticker !== t) { state.ticker = ""; $("ticker").value = ""; } setTab("timeline"); }
-  function writeHash() { const h = `#tab=${state.tab}${state.focus ? `&t=${encodeURIComponent(state.focus)}` : ""}`; if (location.hash !== h) history.replaceState(null, "", h); }
-  function readHash() { const p = new URLSearchParams(location.hash.slice(1)); if (p.get("t")) state.focus = p.get("t").toUpperCase(); if (p.get("tab")) state.tab = p.get("tab"); }
+  function writeHash() {
+    const h = `#tab=${state.tab}${state.focus ? `&t=${encodeURIComponent(state.focus)}` : ""}`;
+    if (location.hash === h) return;
+    writingHash = true;
+    history.replaceState(null, "", h);
+    writingHash = false;
+  }
+  function readHash() {
+    const p = new URLSearchParams(location.hash.slice(1));
+    const t = p.get("t");
+    if (t) state.focus = t.toUpperCase();
+    const tab = p.get("tab");
+    if (tab && TABS.includes(tab)) state.tab = tab;
+  }
+  function applyHash() {
+    if (writingHash) return;
+    const prevTab = state.tab, prevFocus = state.focus;
+    readHash();
+    if (state.focus && state.ticker && state.ticker !== state.focus) { state.ticker = ""; $("ticker").value = ""; }
+    if (state.tab === prevTab && state.focus === prevFocus) return;
+    setTab(state.tab);
+  }
+
+
+  /* ---------- chart popover ---------- */
+  const popState = { pinned: false, key: null };
+  function callsForMarker(kind, date) {
+    const calls = focusCalls();
+    if (kind === "flip") return calls.filter((c) => c.is_flip && snapDate(c) === date);
+    return calls.filter((c) => snapDate(c) === date && c.sentiment === kind);
+  }
+  function closeCallPop() {
+    const pop = $("call-pop");
+    if (pop) { pop.hidden = true; pop.innerHTML = ""; }
+    popState.pinned = false;
+    popState.key = null;
+  }
+  function placeCallPop(anchor) {
+    const pop = $("call-pop");
+    if (!pop || pop.hidden || !anchor) return;
+    const r = anchor.getBoundingClientRect();
+    const pad = 8;
+    const pw = pop.offsetWidth, ph = pop.offsetHeight;
+    let left = r.left + r.width / 2 - pw / 2;
+    let top = r.bottom + 8;
+    left = Math.min(Math.max(pad, left), Math.max(pad, window.innerWidth - pw - pad));
+    if (top + ph > window.innerHeight - pad) top = r.top - ph - 8;
+    top = Math.min(Math.max(pad, top), Math.max(pad, window.innerHeight - ph - pad));
+    pop.style.left = left + "px";
+    pop.style.top = top + "px";
+  }
+  function openCallPop(kind, date, anchor, pinned) {
+    const pop = $("call-pop");
+    if (!pop || !anchor) return;
+    const rows = callsForMarker(kind, date);
+    if (!rows.length) return;
+    const key = kind + "|" + date;
+    popState.pinned = !!pinned;
+    popState.key = key;
+    pop.style.pointerEvents = pinned ? "auto" : "none";
+    pop.innerHTML = rows.map((c) => {
+      const tag = c.is_flip && c.flip_tag ? ` · ${esc(TAG_LABEL[c.flip_tag] || c.flip_tag)}` : "";
+      const href = c.url || c.video_url || "";
+      const watch = href
+        ? `<a href="${esc(href)}" target="_blank" rel="noopener">Watch</a>`
+        : `<span class="novid">no video link</span>`;
+      return `<div class="call-pop-row"><div>${esc(c.channel)} · ${esc(fmtD(c.date))} · ${GLYPH[c.sentiment] || ""} ${esc(c.sentiment)}${tag}</div>${watch}</div>`;
+    }).join("");
+    pop.hidden = false;
+    placeCallPop(anchor);
+  }
+  function bindCallPop() {
+    const overlay = $("chart-overlay");
+    if (!overlay || overlay.dataset.popBound) return;
+    overlay.dataset.popBound = "1";
+    const targetOf = (e) => e.target.closest && (e.target.closest(".chart-flip-ring") || e.target.closest(".chart-mark"));
+    overlay.addEventListener("click", (e) => {
+      const el = targetOf(e);
+      if (!el) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openCallPop(el.getAttribute("data-kind"), el.getAttribute("data-date"), el, true);
+    });
+    overlay.addEventListener("keydown", (e) => {
+      if (e.key !== "Enter" && e.key !== " ") return;
+      const el = targetOf(e);
+      if (!el) return;
+      e.preventDefault();
+      openCallPop(el.getAttribute("data-kind"), el.getAttribute("data-date"), el, true);
+    });
+    overlay.addEventListener("pointerover", (e) => {
+      if (popState.pinned) return;
+      const el = targetOf(e);
+      if (el) openCallPop(el.getAttribute("data-kind"), el.getAttribute("data-date"), el, false);
+    });
+    overlay.addEventListener("pointerout", (e) => {
+      if (popState.pinned) return;
+      const pop = $("call-pop");
+      const next = e.relatedTarget;
+      if (pop && next && (pop.contains(next) || overlay.contains(next))) return;
+      closeCallPop();
+    });
+  }
+
+  /* ---------- holdings editor ---------- */
+  function renderHoldingsList() {
+    const ul = $("holdings-list");
+    if (!ul) return;
+    ul.innerHTML = HOLDINGS.map((t) => `<li data-t="${esc(t)}"><span>★ ${esc(t)}</span><button type="button" data-remove="${esc(t)}" aria-label="Remove ${esc(t)}">Remove</button></li>`).join("")
+      || `<li class="dim">No tickers in holdings.</li>`;
+    const btn = $("holdings"), filter = $("holdings-filter");
+    if (btn) btn.setAttribute("aria-pressed", String(!!state.holdings));
+    if (filter) filter.checked = !!state.holdings;
+  }
+  function refreshHoldingsUI() {
+    renderHoldingsList();
+    const sel = $("ticker");
+    if (sel) {
+      const cur = sel.value;
+      fill(sel, uniq(state.mentions.map((r) => r.ticker)), "All tickers");
+      sel.value = cur;
+    }
+    renderActive();
+  }
+  function addHolding(raw) {
+    const t = String(raw || "").trim().toUpperCase();
+    if (!t) return;
+    if (!HOLDINGS.includes(t)) {
+      HOLDINGS = HOLDINGS.concat([t]);
+      saveHoldings(HOLDINGS);
+      refreshHoldingsUI();
+    } else {
+      renderHoldingsList();
+    }
+  }
+  function removeHolding(t) {
+    t = String(t || "").trim().toUpperCase();
+    const next = HOLDINGS.filter((x) => x !== t);
+    if (next.length === HOLDINGS.length) return;
+    HOLDINGS = next;
+    saveHoldings(HOLDINGS);
+    refreshHoldingsUI();
+  }
+  function resetHoldings() {
+    if (!confirm("Reset holdings to the default list (AAPL)?")) return;
+    HOLDINGS = DEFAULT_HOLDINGS.slice();
+    saveHoldings(HOLDINGS);
+    refreshHoldingsUI();
+  }
+  function setHoldingsPanel(open) {
+    const panel = $("holdings-panel"), btn = $("holdings");
+    if (!panel) return;
+    panel.hidden = !open;
+    if (btn) btn.setAttribute("aria-expanded", String(!!open));
+    if (open) {
+      renderHoldingsList();
+      // keep the panel inside the viewport
+      const r = panel.getBoundingClientRect();
+      if (r.right > window.innerWidth - 8) panel.style.left = "auto", panel.style.right = "0";
+      else panel.style.left = "0", panel.style.right = "auto";
+    }
+  }
+  function holdingsPanelOpen() {
+    const panel = $("holdings-panel");
+    return !!(panel && !panel.hidden);
+  }
 
   function bind() {
     const on = (id, ev, fn) => $(id).addEventListener(ev, fn);
     ["from", "to", "channel", "ticker", "sentiment"].forEach((id) => on(id, "change", (e) => { state[id] = e.target.value; renderActive(); }));
-    on("holdings", "click", () => { state.holdings = !state.holdings; $("holdings").setAttribute("aria-pressed", String(state.holdings)); renderActive(); });
+    const holdBtn = $("holdings");
+    if (holdBtn) holdBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      setHoldingsPanel(!holdingsPanelOpen());
+    });
+    const holdFilter = $("holdings-filter");
+    if (holdFilter) holdFilter.addEventListener("change", () => {
+      state.holdings = !!holdFilter.checked;
+      if ($("holdings")) $("holdings").setAttribute("aria-pressed", String(state.holdings));
+      renderActive();
+    });
+    const holdAdd = $("holdings-add");
+    if (holdAdd) holdAdd.addEventListener("submit", (e) => {
+      e.preventDefault();
+      const input = $("holdings-input");
+      addHolding(input ? input.value : "");
+      if (input) input.value = "";
+    });
+    const holdList = $("holdings-list");
+    if (holdList) holdList.addEventListener("click", (e) => {
+      const b = e.target.closest("[data-remove]");
+      if (b) removeHolding(b.getAttribute("data-remove"));
+    });
+    const holdReset = $("holdings-reset");
+    if (holdReset) holdReset.addEventListener("click", resetHoldings);
+    bindCallPop();
+    document.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape") return;
+      if ($("call-pop") && !$("call-pop").hidden) { closeCallPop(); e.preventDefault(); return; }
+      if (holdingsPanelOpen()) { setHoldingsPanel(false); e.preventDefault(); }
+    });
+    document.addEventListener("pointerdown", (e) => {
+      const pop = $("call-pop");
+      if (pop && !pop.hidden && !pop.contains(e.target) && !(e.target.closest && e.target.closest("#chart-overlay .chart-mark, #chart-overlay .chart-flip-ring"))) {
+        closeCallPop();
+      }
+      if (holdingsPanelOpen() && !(e.target.closest && e.target.closest(".hold-wrap"))) setHoldingsPanel(false);
+    });
+    document.querySelectorAll("#chart-legend .leg-btn").forEach((b) => {
+      b.addEventListener("click", () => {
+        const k = b.dataset.layer;
+        if (!LEGEND_KEYS.includes(k)) return;
+        state.legend[k] = !state.legend[k];
+        saveLegend(state.legend);
+        applyLegendVisibility();
+      });
+    });
+    syncLegendButtons();
+    renderHoldingsList();
     const setBasis = (b) => { state.basis = b; $("basis-raw").classList.toggle("on", b === "raw"); $("basis-spy").classList.toggle("on", b === "spy");
       $("basis-raw").setAttribute("aria-pressed", String(b === "raw")); $("basis-spy").setAttribute("aria-pressed", String(b === "spy")); renderActive(); };
     on("basis-raw", "click", () => setBasis("raw")); on("basis-spy", "click", () => setBasis("spy"));
     on("reset", "click", () => {
       Object.assign(state, { from: state.minDate, to: state.maxDate, channel: "", ticker: "", sentiment: "", holdings: false, search: "" });
       $("from").value = state.from; $("to").value = state.to; ["channel", "ticker", "sentiment"].forEach((id) => { $(id).value = ""; });
-      $("tsearch").value = ""; $("holdings").setAttribute("aria-pressed", "false"); setBasis("raw");
+      $("tsearch").value = ""; $("holdings").setAttribute("aria-pressed", "false");
+      if ($("holdings-filter")) $("holdings-filter").checked = false; setBasis("raw");
     });
     on("tsearch", "input", (e) => { state.search = e.target.value; renderList(); });
     $("tlist").addEventListener("click", (e) => { const it = e.target.closest(".titem"); if (it) { state.focus = it.dataset.t; renderTimeline(); writeHash(); } });
     $("tlist").addEventListener("keydown", (e) => { if (e.key === "Enter") { const it = e.target.closest(".titem"); if (it) { state.focus = it.dataset.t; renderTimeline(); writeHash(); } } });
     document.body.addEventListener("click", (e) => { const f = e.target.closest("[data-focus]"); if (f && !e.target.closest("a")) focusTicker(f.dataset.focus); });
     document.querySelectorAll(".tabs button").forEach((b) => b.addEventListener("click", () => setTab(b.dataset.tab)));
+    window.addEventListener("hashchange", applyHash);
+    bindLaneTips();
+    if ($("calls-scroll")) {
+      $("calls-scroll").addEventListener("scroll", updateCallsScrollCue, { passive: true });
+      new ResizeObserver(updateCallsScrollCue).observe($("calls-scroll"));
+    }
+
     const sorter = (sel, attr, sk, fn) => document.querySelectorAll(sel).forEach((th) => th.addEventListener("click", (e) => {
       e.stopPropagation(); const key = th.dataset[attr];
       if (state[sk].key === key) state[sk].dir *= -1; else state[sk] = { key, dir: ["date", "channel", "ticker", "sentiment"].includes(key) ? (key === "date" ? -1 : 1) : -1 };
@@ -616,6 +1273,15 @@
     sel.innerHTML = `<option value="">${all}</option>` + vals.map((v) => `<option value="${esc(v)}">${esc(v)}${isHold(v) ? " ★" : ""}</option>`).join("");
   }
 
+  function applyFreshness(scores) {
+    const el = $("freshness");
+    if (!el || typeof freshnessBanner !== "function") return;
+    const msg = freshnessBanner(scores && scores.generated_at);
+    if (!msg) { el.hidden = true; el.textContent = ""; return; }
+    el.textContent = msg;
+    el.hidden = false;
+  }
+
   async function init() {
     if (typeof Chart !== "undefined") { Chart.defaults.font.family = 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif'; Chart.defaults.color = "#8b95a8"; Chart.defaults.animation = false; }
     readHash(); bind();
@@ -625,7 +1291,7 @@
         i, ticker: String(r.ticker || "").trim().toUpperCase() || "—", channel: String(r.channel || "").trim() || "Unknown", date: String(r.date || "").trim().slice(0, 10),
         sentiment: String(r.sentiment || "").trim().toLowerCase() || "unknown", price_talk: String(r.price_talk || "").trim(), summary: String(r.summary || "").trim(),
         url: String(r.url || "").trim() || String(r.video_url || "").trim() } : null).filter(Boolean);
-    } catch (e) { status(`Could not load mentions from ${cfg.dataUrl}: ${e.message}`, true); return; }
+    } catch (e) { status(`Could not load mentions from ${cfg.dataUrl}: ${e.message}`, true); applyFreshness(null); return; }
     const [sc, ins, px] = await Promise.allSettled([fetchJson(cfg.scoresUrl), fetchJson(cfg.insightsUrl), fetchJson(cfg.pricesUrl)]);
     state.scores = sc.status === "fulfilled" ? sc.value : null;
     state.insights = ins.status === "fulfilled" ? ins.value : null;
@@ -633,6 +1299,7 @@
     if (state.scores && state.scores.thin_n) THIN = state.scores.thin_n;
     const errs = [[sc, "scores"], [ins, "insights"], [px, "prices"]].filter(([r]) => r.status !== "fulfilled").map(([r, n]) => `${n} (${r.reason && r.reason.message})`);
     if (errs.length) status(`Some data did not load: ${errs.join("; ")}. Run ./scripts/run_all.sh, then refresh.`, true);
+    applyFreshness(state.scores);
     const dates = state.mentions.map((r) => r.date).filter(Boolean).sort();
     state.minDate = state.from = dates[0] || ""; state.maxDate = state.to = dates[dates.length - 1] || "";
     $("from").value = state.from; $("to").value = state.to;

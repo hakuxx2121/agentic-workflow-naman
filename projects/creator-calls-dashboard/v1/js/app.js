@@ -1,6 +1,7 @@
 
 (() => {
-  const HOLDINGS = [];
+  // Example placeholder only. Replace with your own symbols, or use [].
+  const HOLDINGS = ["AAPL"];
   const SENT_ORDER = ["bullish", "bearish", "mixed", "neutral", "unknown"];
   const SENT_COLOR = {
     bullish: "#3ecf8e",

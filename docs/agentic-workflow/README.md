@@ -1,6 +1,7 @@
 # Grok Bot company org chart
 
 How the agent fleet in this portfolio is organized. Naman is CEO. **CEO Bot** is the primary router and reviewer. **Manager Bot** coordinates the Creator Dashboard team. Specialist bots report to CEO Bot. **Tech Bot** is shown once: it is on the Creator Dashboard team (infra) and also reports to CEO Bot as a specialist.
+How Ticker Tracker's nightly fetch, the dashboard refresh, the PC data sync, and the on-demand backfill job fit together is in [pipelines.md](pipelines.md).
 
 ![Grok Bot company org chart](org-chart.png)
 
@@ -13,7 +14,7 @@ How the agent fleet in this portfolio is organized. Naman is CEO. **CEO Bot** is
    python3 render.py
    ```
 
-   That regenerates `org-chart.html`, this README’s Mermaid block, and the canonical image `org-chart.png`.
+   That regenerates `org-chart.html`, this README's Mermaid block, and the canonical image `org-chart.png`.
 
 Do not hand-edit `org-chart.html` or the Mermaid block; they are generated from `org.yaml`. The PNG is the only canonical image used in the top-level README.
 
@@ -31,10 +32,10 @@ flowchart TB
     subgraph dash["Creator Dashboard team"]
         direction TB
         manager_bot["Manager Bot — Team lead"]
-        business_logic_writer["Business Logic Writer — Specs"]
-        graph_bot["Graph Bot — Builds"]
+        business_logic_writer["Business Logic Writer — Owns the spec"]
+        graph_bot["Graph Bot — Builds the dashboard"]
         dashboard_qa["Dashboard QA — Tests"]
-        github_bot["GitHub Bot — Publishing"]
+        github_bot["GitHub Bot — Publishes"]
         tech_bot["Tech Bot — Infra · also a specialist"]
         manager_bot --> business_logic_writer & graph_bot & dashboard_qa & github_bot & tech_bot
     end

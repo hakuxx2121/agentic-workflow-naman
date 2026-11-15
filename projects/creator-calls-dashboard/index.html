@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="css/v2.css">
 </head>
 <body>
+  <div id="freshness" class="freshness" hidden role="status"></div>
   <header class="bar">
     <div class="brand"><span class="logo">◆</span> Creator Calls</div>
     <nav class="tabs" role="tablist">
@@ -39,7 +40,18 @@
       <button type="button" id="basis-raw" class="on" aria-pressed="true">Raw</button>
       <button type="button" id="basis-spy" aria-pressed="false">vs SPY</button>
     </div>
-    <button type="button" class="btn" id="holdings" aria-pressed="false">★ My holdings</button>
+    <div class="hold-wrap">
+      <button type="button" class="btn" id="holdings" aria-pressed="false" aria-expanded="false" aria-controls="holdings-panel">★ My holdings</button>
+      <div id="holdings-panel" class="hold-panel" hidden>
+        <label class="hold-filter"><input type="checkbox" id="holdings-filter"> Show only my holdings</label>
+        <ul id="holdings-list" class="hold-list"></ul>
+        <form id="holdings-add" class="hold-add">
+          <input id="holdings-input" type="text" maxlength="16" placeholder="Add ticker" aria-label="Add ticker" autocomplete="off" spellcheck="false">
+          <button type="submit" class="btn">Add</button>
+        </form>
+        <button type="button" class="btn hold-reset" id="holdings-reset">Reset to default</button>
+      </div>
+    </div>
     <button type="button" class="btn" id="reset">Reset</button>
   </section>
 
@@ -59,21 +71,32 @@
 
       <section class="panel tl-center">
         <div id="focus-head" class="focus-head"></div>
-        <div class="legend">
-          <span><i class="ln close"></i>Close</span>
-          <span><i class="ln s20"></i>20-day avg</span>
-          <span><i class="ln s50"></i>50-day avg</span>
-          <span class="g bull">▲ bullish call</span>
-          <span class="g bear">▼ bearish call</span>
-          <span><i class="ring"></i>flip</span>
+        <div class="legend" id="chart-legend" role="group" aria-label="Chart layers">
+          <button type="button" class="leg-btn" data-layer="candles" aria-pressed="true"><i class="ln candles"></i>Price (candles)</button>
+          <button type="button" class="leg-btn" data-layer="s20" aria-pressed="true"><i class="ln s20"></i>20-day avg</button>
+          <button type="button" class="leg-btn" data-layer="s50" aria-pressed="true"><i class="ln s50"></i>50-day avg</button>
+          <button type="button" class="leg-btn" data-layer="bullish" aria-pressed="true"><span class="g bull">▲ bullish call</span></button>
+          <button type="button" class="leg-btn" data-layer="bearish" aria-pressed="true"><span class="g bear">▼ bearish call</span></button>
+          <button type="button" class="leg-btn" data-layer="mixed" aria-pressed="true"><span class="g mixed">◆ mixed</span></button>
+          <button type="button" class="leg-btn" data-layer="flip" aria-pressed="true"><i class="ring"></i>flip</button>
         </div>
-        <div id="chart" class="chart-wrap"><svg id="chart-overlay" class="overlay"></svg></div>
+        <div id="chart" class="chart-wrap"><svg id="chart-overlay" class="overlay"></svg><div id="call-pop" class="call-pop" hidden role="dialog" aria-label="Calls"></div></div>
         <p id="chart-note" class="caption"></p>
         <div class="lanes-head">
           <h3>Who called it, and when they flipped</h3>
-          <p class="caption">One row per creator, lined up with the chart’s dates. ▲ bullish · ▼ bearish · ◆ mixed · ● neutral. A ring marks a flip; its tag says whether the stock moved the new way afterwards. <span id="flip-def-short"></span></p>
+          <p class="lane-legend" id="lane-legend">
+            <span class="g bull">▲ bullish</span>
+            <span class="g bear">▼ bearish</span>
+            <span class="g mixed">◆ mixed</span>
+            <span class="g neutral">● neutral</span>
+            <span><i class="ring"></i>flip</span>
+          </p>
+          <details class="lane-help">
+            <summary>What do the tags mean?</summary>
+            <p class="caption" id="flip-def-short"></p>
+          </details>
         </div>
-        <div id="lanes" class="lanes"><svg id="lanes-svg"></svg></div>
+        <div id="lanes" class="lanes"><svg id="lanes-svg"></svg><div id="lane-axis" class="lane-axis"><svg id="lane-axis-svg"></svg></div><div id="lane-tip" class="lane-tip" hidden role="tooltip"></div></div>
       </section>
 
       <aside class="panel tl-calls">
@@ -81,11 +104,14 @@
           <h2 id="calls-title">Calls</h2>
           <p class="caption">Returns start at the next session’s open after the video. vs SPY = to-date return minus the market’s (SPY) move over the same days. MA = price above ▲ or below ▼ its 20/50-day average when the call was made. Measurement only.</p>
         </div>
-        <div class="table-scroll calls-scroll">
-          <table class="calls">
-            <thead><tr><th>Date</th><th>Creator</th><th>Call</th><th class="r">1D</th><th class="r">5D</th><th class="r">To date</th><th class="r">vs SPY</th><th>MA 20/50</th></tr></thead>
-            <tbody id="calls-body"></tbody>
-          </table>
+        <div class="table-scroll-wrap" id="calls-scroll-wrap">
+          <div class="table-scroll calls-scroll" id="calls-scroll">
+            <table class="calls">
+              <thead><tr><th>Date</th><th>Creator</th><th>Call</th><th class="r">1D</th><th class="r">5D</th><th class="r">To date</th><th class="r">vs SPY</th><th>MA 20/50</th></tr></thead>
+              <tbody id="calls-body"></tbody>
+            </table>
+          </div>
+          <div class="scroll-cue" id="calls-scroll-cue" hidden>scroll →</div>
         </div>
       </aside>
     </div>
@@ -183,6 +209,7 @@
   </footer>
 
   <script src="js/config.js"></script>
+  <script src="js/freshness.js"></script>
   <script src="vendor/chart.umd.min.js"></script>
   <script src="vendor/lightweight-charts/lightweight-charts.standalone.production.js"></script>
   <script src="js/v2.js"></script>
